@@ -138,11 +138,11 @@ class LinkTitleSuggest extends EditorSuggest<SuggestionItem> {
     if (suggestion.isNewNote) {
       const newFile = await this.app.vault.create(`${suggestion.display}.md`, '');
       linkText = useMarkdownLinks
-        ? `[${suggestion.display}](${encodeURI(newFile.path)})`
+        ? `[${suggestion.display}](${encodeURI(newFile.basename)})`
         : `[[${newFile.basename}]]`;
     } else {
       if (useMarkdownLinks) {
-        linkText = `[${suggestion.display}](${encodeURI(suggestion.file!.path)})`;
+        linkText = `[${suggestion.display}](${encodeURI(suggestion.file!.basename)})`;
       } else {
         const linkPath = suggestion.file!.basename;
         linkText = `[[${linkPath}|${suggestion.display}]]`;

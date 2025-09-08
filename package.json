@@ -1,6 +1,6 @@
 {
 	"name": "link-title-from-property",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"description": "Customizes internal link suggestions to show and insert using a specified note property instead of filename.",
 	"main": "main.js",
 	"scripts": {
