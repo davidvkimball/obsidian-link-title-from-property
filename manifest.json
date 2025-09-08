@@ -3,7 +3,7 @@
 	"name": "Link Title from Property",
 	"version": "0.1.0",
 	"minAppVersion": "0.15.0",
-	"description": "Customizes internal link suggestions to show and insert using a specified frontmatter property instead of filename.",
+	"description": "Customizes internal link suggestions to show and insert using a specified note property instead of filename.",
 	"author": "David V. Kimball",
 	"authorUrl": "https://davidvkimball.com",
 	"fundingUrl": "https://patreon.com/davidvkimball",

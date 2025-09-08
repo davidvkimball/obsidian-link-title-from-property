@@ -1,7 +1,7 @@
 {
 	"name": "link-title-from-property",
 	"version": "0.1.0",
-	"description": "Customizes internal link suggestions to show and insert using a specified frontmatter property instead of filename.",
+	"description": "Customizes internal link suggestions to show and insert using a specified note property instead of filename.",
 	"main": "main.js",
 	"scripts": {
 		"dev": "node esbuild.config.mjs",
