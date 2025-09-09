@@ -4,12 +4,16 @@ interface PluginSettings {
   propertyKey: string;
   enableForLinking: boolean;
   enableForQuickSwitcher: boolean;
+  includeFilenameInSearch: boolean;
+  includeAliasesInSearch: boolean;
 }
 
 const DEFAULT_SETTINGS: PluginSettings = {
   propertyKey: 'title',
   enableForLinking: true,
   enableForQuickSwitcher: true,
+  includeFilenameInSearch: true,
+  includeAliasesInSearch: true,
 };
 
 interface SuggestionItem {
@@ -73,7 +77,15 @@ class LinkTitleSuggest extends EditorSuggest<SuggestionItem> {
           isCustomDisplay = true;
         }
       }
-      if (!query || this.fuzzyMatch(display, query) || this.fuzzyMatch(file.basename, query)) {
+      let matches = !query || this.fuzzyMatch(display, query);
+      if (this.plugin.settings.includeFilenameInSearch) {
+        matches = matches || this.fuzzyMatch(file.basename, query);
+      }
+      if (this.plugin.settings.includeAliasesInSearch && frontmatter?.aliases) {
+        const aliases = Array.isArray(frontmatter.aliases) ? frontmatter.aliases : [frontmatter.aliases];
+        matches = matches || aliases.some((alias: string) => this.fuzzyMatch(String(alias).trim(), query));
+      }
+      if (matches) {
         suggestions.push({ file, display, isCustomDisplay });
         existingFiles.add(file.basename.toLowerCase());
       }
@@ -118,8 +130,8 @@ class LinkTitleSuggest extends EditorSuggest<SuggestionItem> {
     const lowerQuery = query.toLowerCase();
     if (lowerDisplay.startsWith(lowerQuery)) score += 10;
     else if (lowerDisplay.includes(lowerQuery)) score += 5;
-    if (lowerBasename.startsWith(lowerQuery)) score += 8;
-    else if (lowerBasename.includes(lowerQuery)) score += 4;
+    if (this.plugin.settings.includeFilenameInSearch && lowerBasename.startsWith(lowerQuery)) score += 8;
+    else if (this.plugin.settings.includeFilenameInSearch && lowerBasename.includes(lowerQuery)) score += 4;
     return score;
   }
 
@@ -191,7 +203,7 @@ class QuickSwitchModal extends FuzzySuggestModal<QuickSwitchItem['item']> {
       return `Create new note: ${item.newName}`;
     }
     const display = this.getDisplayName(item);
-    return display + (display !== item.basename ? ` (${item.basename})` : '');
+    return display + (this.plugin.settings.includeFilenameInSearch && display !== item.basename ? ` (${item.basename})` : '');
   }
 
   getDisplayName(file: TFile): string {
@@ -217,8 +229,18 @@ class QuickSwitchModal extends FuzzySuggestModal<QuickSwitchItem['item']> {
     const search = prepareFuzzySearch(searchQuery);
     let results: FuzzyMatch<QuickSwitchItem['item']>[] = items.map((item) => {
       const text = this.getItemText(item);
-      const match = searchQuery ? search(text) : { score: 0, matches: [] };
-      return { item, match: match || { score: 0, matches: [] } };
+      const cache = this.app.metadataCache.getFileCache(item as TFile);
+      const frontmatter = cache?.frontmatter;
+      const match = searchQuery ? search(text) ?? { score: 0, matches: [] } : { score: 0, matches: [] };
+      let aliasMatch = false;
+      if (this.plugin.settings.includeAliasesInSearch && frontmatter?.aliases) {
+        const aliases = Array.isArray(frontmatter.aliases) ? frontmatter.aliases : [frontmatter.aliases];
+        aliasMatch = aliases.some((alias: string) => this.fuzzyMatch(String(alias).trim(), searchQuery));
+      }
+      if (aliasMatch && match.matches.length === 0) {
+        return { item, match: { score: -0.1, matches: [[0, searchQuery.length]] } };
+      }
+      return { item, match };
     });
 
     try {
@@ -228,7 +250,11 @@ class QuickSwitchModal extends FuzzySuggestModal<QuickSwitchItem['item']> {
           .sort((a, b) => b.match.score - a.match.score || this.getItemText(a.item).localeCompare(this.getItemText(b.item)))
           .slice(0, this.limit);
         const lowerQuery = searchQuery.toLowerCase();
-        const hasExact = items.some((item) => !('isNewNote' in item) && (this.getDisplayName(item).toLowerCase() === lowerQuery || item.basename.toLowerCase() === lowerQuery));
+        const hasExact = items.some((item) => !('isNewNote' in item) && (
+          this.getDisplayName(item as TFile).toLowerCase() === lowerQuery ||
+          (this.plugin.settings.includeFilenameInSearch && (item as TFile).basename.toLowerCase() === lowerQuery) ||
+          (this.plugin.settings.includeAliasesInSearch && this.app.metadataCache.getFileCache(item as TFile)?.frontmatter?.aliases?.some((alias: string) => String(alias).trim().toLowerCase() === lowerQuery))
+        ));
         if (!hasExact) {
           const newItem = { isNewNote: true, newName: searchQuery };
           results.unshift({
@@ -247,6 +273,17 @@ class QuickSwitchModal extends FuzzySuggestModal<QuickSwitchItem['item']> {
       new Notice('Error updating Quick Switcher suggestions. Please check console for details.');
       return [];
     }
+  }
+
+  fuzzyMatch(str: string, query: string): boolean {
+    let i = 0;
+    const lowerStr = str.toLowerCase();
+    const lowerQuery = query.toLowerCase();
+    for (const char of lowerQuery) {
+      i = lowerStr.indexOf(char, i) + 1;
+      if (i === 0) return false;
+    }
+    return true;
   }
 
   renderSuggestion(suggestion: FuzzyMatch<QuickSwitchItem['item']>, el: HTMLElement): void {
@@ -382,7 +419,7 @@ class SettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Property key')
-      .setDesc('The property to use as the display title.')
+      .setDesc('The frontmatter property to use as the display title (e.g., "title" or "display_title").')
       .addText((text) =>
         text
           .setPlaceholder('title')
@@ -395,7 +432,7 @@ class SettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('When linking notes')
-      .setDesc('Enable property-based titles in the link suggester.')
+      .setDesc('Enable property-based titles in the link suggester ([[).')
       .addToggle((toggle) =>
         toggle
           .setValue(this.plugin.settings.enableForLinking)
@@ -406,8 +443,8 @@ class SettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName('In quick switcher')
-      .setDesc('Enable property-based titles in quick switcher.')
+      .setName('In Quick Switcher')
+      .setDesc('Enable property-based titles in the Quick Switcher (Ctrl+O).')
       .addToggle((toggle) =>
         toggle
           .setValue(this.plugin.settings.enableForQuickSwitcher)
@@ -415,6 +452,30 @@ class SettingTab extends PluginSettingTab {
             const prevQuickSwitcherState = this.plugin.settings.enableForQuickSwitcher;
             this.plugin.settings.enableForQuickSwitcher = value;
             await this.plugin.saveSettings(prevQuickSwitcherState);
+          })
+      );
+
+    new Setting(containerEl)
+      .setName('Include filename in fuzzy searches')
+      .setDesc('Include note filenames in fuzzy search results for link suggester and Quick Switcher.')
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.includeFilenameInSearch)
+          .onChange(async (value) => {
+            this.plugin.settings.includeFilenameInSearch = value;
+            await this.plugin.saveSettings(this.plugin.settings.enableForQuickSwitcher);
+          })
+      );
+
+    new Setting(containerEl)
+      .setName('Include aliases in fuzzy searches')
+      .setDesc('Include frontmatter aliases in fuzzy search results for link suggester and Quick Switcher.')
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.includeAliasesInSearch)
+          .onChange(async (value) => {
+            this.plugin.settings.includeAliasesInSearch = value;
+            await this.plugin.saveSettings(this.plugin.settings.enableForQuickSwitcher);
           })
       );
   }
