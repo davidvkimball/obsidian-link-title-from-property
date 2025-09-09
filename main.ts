@@ -38,20 +38,26 @@ class LinkTitleSuggest extends EditorSuggest<SuggestionItem> {
   }
 
   onTrigger(cursor: EditorPosition, editor: Editor, file: TFile | null): EditorSuggestTriggerInfo | null {
-    const line = editor.getLine(cursor.line).substring(0, cursor.ch);
+    const fullLine = editor.getLine(cursor.line);
+    const line = fullLine.substring(0, cursor.ch);
     const match = /\[\[([^#^|\]]+)$/.exec(line);
-    if (match) {
+    if (line.includes('[[')) {
+      let endCh = cursor.ch;
+      const afterCursor = fullLine.substring(cursor.ch);
+      if (afterCursor.startsWith(']]')) {
+        endCh += 2; // Include the auto-paired ]]
+      }
       return {
         start: { line: cursor.line, ch: line.lastIndexOf('[[') },
-        end: cursor,
-        query: match[1],
+        end: { line: cursor.line, ch: endCh },
+        query: match ? match[1] : '', // Empty query if no text after [[
       };
     }
     return null;
   }
 
   getSuggestions(context: EditorSuggestContext): SuggestionItem[] {
-    const query = context.query.trim();
+    const query = context.query.trim().toLowerCase();
     const suggestions: SuggestionItem[] = [];
     const existingFiles = new Set<string>();
     this.app.vault.getMarkdownFiles().forEach((file) => {
@@ -66,16 +72,16 @@ class LinkTitleSuggest extends EditorSuggest<SuggestionItem> {
           isCustomDisplay = true;
         }
       }
-      if (this.fuzzyMatch(display, context.query) || this.fuzzyMatch(file.basename, context.query)) {
+      if (query === '' || this.fuzzyMatch(display, query) || this.fuzzyMatch(file.basename, query)) {
         suggestions.push({ file, display, isCustomDisplay });
         existingFiles.add(file.basename.toLowerCase());
       }
     });
 
     // Add new note suggestion as first option if query doesn't match an existing file exactly
-    if (query && !existingFiles.has(query.toLowerCase())) {
+    if (query === '' || (query && !existingFiles.has(query.toLowerCase()))) {
       suggestions.unshift({
-        display: query,
+        display: query || 'Create new note',
         isCustomDisplay: false,
         isNewNote: true,
       });
@@ -131,33 +137,26 @@ class LinkTitleSuggest extends EditorSuggest<SuggestionItem> {
     if (!activeView || !this.context) return;
     const editor = activeView.editor;
     const { start, end } = this.context;
-    const currentLine = editor.getLine(end.line);
     const useMarkdownLinks = (this.app.vault as any).getConfig('useMarkdownLinks') ?? false;
     let linkText: string;
 
     if (suggestion.isNewNote) {
-      const newFile = await this.app.vault.create(`${suggestion.display}.md`, '');
+      const newFile = await this.app.vault.create(`${suggestion.display === 'Create new note' ? '' : suggestion.display}.md`, '');
       linkText = useMarkdownLinks
-        ? `[${suggestion.display}](${encodeURI(newFile.basename)})`
+        ? this.app.fileManager.generateMarkdownLink(newFile, activeView.file?.path || '', '', suggestion.display === 'Create new note' ? newFile.basename : suggestion.display)
         : `[[${newFile.basename}]]`;
     } else {
       if (useMarkdownLinks) {
-        linkText = `[${suggestion.display}](${encodeURI(suggestion.file!.basename)})`;
+        linkText = this.app.fileManager.generateMarkdownLink(suggestion.file!, activeView.file?.path || '', '', suggestion.display);
       } else {
         const linkPath = suggestion.file!.basename;
         linkText = `[[${linkPath}|${suggestion.display}]]`;
       }
     }
 
-    // Replace the full input, including any trailing characters up to the line end
-    const fullStart = { line: start.line, ch: start.ch };
-    const fullEnd = { line: end.line, ch: currentLine.length };
-    editor.replaceRange(linkText, fullStart, fullEnd);
-
-    // Move cursor and clear selection to prevent auto-completion
-    const newCursor = { line: end.line, ch: start.ch + linkText.length };
-    editor.setCursor(newCursor);
-    editor.setSelection(newCursor, newCursor);
+    editor.replaceRange(linkText, start, end);
+    editor.setCursor({ line: end.line, ch: end.ch + linkText.length });
+    editor.setSelection({ line: end.line, ch: end.ch + linkText.length }, { line: end.line, ch: end.ch + linkText.length });
   }
 }
 
