@@ -38,26 +38,20 @@ class LinkTitleSuggest extends EditorSuggest<SuggestionItem> {
   }
 
   onTrigger(cursor: EditorPosition, editor: Editor, file: TFile | null): EditorSuggestTriggerInfo | null {
-    const fullLine = editor.getLine(cursor.line);
-    const line = fullLine.substring(0, cursor.ch);
+    const line = editor.getLine(cursor.line).substring(0, cursor.ch);
     const match = /\[\[([^#^|\]]+)$/.exec(line);
-    if (line.includes('[[')) {
-      let endCh = cursor.ch;
-      const afterCursor = fullLine.substring(cursor.ch);
-      if (afterCursor.startsWith(']]')) {
-        endCh += 2; // Include the auto-paired ]]
-      }
+    if (match) {
       return {
         start: { line: cursor.line, ch: line.lastIndexOf('[[') },
-        end: { line: cursor.line, ch: endCh },
-        query: match ? match[1] : '', // Empty query if no text after [[
+        end: cursor,
+        query: match[1],
       };
     }
     return null;
   }
 
   getSuggestions(context: EditorSuggestContext): SuggestionItem[] {
-    const query = context.query.trim().toLowerCase();
+    const query = context.query.trim();
     const suggestions: SuggestionItem[] = [];
     const existingFiles = new Set<string>();
     this.app.vault.getMarkdownFiles().forEach((file) => {
@@ -72,16 +66,16 @@ class LinkTitleSuggest extends EditorSuggest<SuggestionItem> {
           isCustomDisplay = true;
         }
       }
-      if (query === '' || this.fuzzyMatch(display, query) || this.fuzzyMatch(file.basename, query)) {
+      if (this.fuzzyMatch(display, context.query) || this.fuzzyMatch(file.basename, context.query)) {
         suggestions.push({ file, display, isCustomDisplay });
         existingFiles.add(file.basename.toLowerCase());
       }
     });
 
     // Add new note suggestion as first option if query doesn't match an existing file exactly
-    if (query === '' || (query && !existingFiles.has(query.toLowerCase()))) {
+    if (query && !existingFiles.has(query.toLowerCase())) {
       suggestions.unshift({
-        display: query || 'Create new note',
+        display: query,
         isCustomDisplay: false,
         isNewNote: true,
       });
@@ -141,22 +135,24 @@ class LinkTitleSuggest extends EditorSuggest<SuggestionItem> {
     let linkText: string;
 
     if (suggestion.isNewNote) {
-      const newFile = await this.app.vault.create(`${suggestion.display === 'Create new note' ? '' : suggestion.display}.md`, '');
+      const newFile = await this.app.vault.create(`${suggestion.display}.md`, '');
       linkText = useMarkdownLinks
-        ? this.app.fileManager.generateMarkdownLink(newFile, activeView.file?.path || '', '', suggestion.display === 'Create new note' ? newFile.basename : suggestion.display)
+        ? `[${suggestion.display}](${encodeURI(newFile.path)})`
         : `[[${newFile.basename}]]`;
+      editor.replaceRange(linkText, { line: start.line, ch: start.ch }, end);
+      if (this.app.workspace.activeLeaf) {
+        await this.app.workspace.activeLeaf.openFile(newFile);
+      }
     } else {
       if (useMarkdownLinks) {
-        linkText = this.app.fileManager.generateMarkdownLink(suggestion.file!, activeView.file?.path || '', '', suggestion.display);
+        linkText = `[${suggestion.display}](${encodeURI(suggestion.file!.path)})`;
       } else {
         const linkPath = suggestion.file!.basename;
         linkText = `[[${linkPath}|${suggestion.display}]]`;
       }
+      editor.replaceRange(linkText, { line: start.line, ch: start.ch }, end);
     }
-
-    editor.replaceRange(linkText, start, end);
-    editor.setCursor({ line: end.line, ch: end.ch + linkText.length });
-    editor.setSelection({ line: end.line, ch: end.ch + linkText.length }, { line: end.line, ch: end.ch + linkText.length });
+    editor.setCursor({ line: end.line, ch: end.ch + linkText.length }); // Move cursor to end
   }
 }
 
