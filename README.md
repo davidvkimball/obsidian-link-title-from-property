@@ -1,6 +1,6 @@
 # Link Title From Property Obsidian Plugin
 
-Customizes internal link suggestions to show and insert using a specified note property (frontmatter) instead of filename.
+Search, display, and insert notes using a specified note property instead of the filename.
 
 Helpful for when the filename isn't semantic or you prefer to use another property field to find and link notes.
 
