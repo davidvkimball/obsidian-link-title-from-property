@@ -362,13 +362,9 @@ export default class PropertyOverFilenamePlugin extends Plugin {
   }
 
   async saveSettings(prevQuickSwitcherState?: boolean) {
-    const quickSwitcherChanged = prevQuickSwitcherState !== undefined && prevQuickSwitcherState !== this.settings.enableForQuickSwitcher;
     await this.saveData(this.settings);
     this.updateLinkSuggester();
     this.updateQuickSwitcher();
-    if (quickSwitcherChanged) {
-      new Notice('Please restart Obsidian for Quick Switcher changes to take effect.');
-    }
   }
 }
 
@@ -386,7 +382,7 @@ class SettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Property key')
-      .setDesc('The frontmatter property to use as the display title (e.g., "title" or "display_title").')
+      .setDesc('The property to use as the display title.')
       .addText((text) =>
         text
           .setPlaceholder('title')
@@ -399,7 +395,7 @@ class SettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('When linking notes')
-      .setDesc('Enable property-based titles in the link suggester ([[).')
+      .setDesc('Enable property-based titles in the link suggester.')
       .addToggle((toggle) =>
         toggle
           .setValue(this.plugin.settings.enableForLinking)
@@ -410,8 +406,8 @@ class SettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName('In Quick Switcher')
-      .setDesc('Enable property-based titles in the Quick Switcher (Ctrl+O). Restart Obsidian to apply changes.')
+      .setName('In quick switcher')
+      .setDesc('Enable property-based titles in quick switcher.')
       .addToggle((toggle) =>
         toggle
           .setValue(this.plugin.settings.enableForQuickSwitcher)
