@@ -1,24 +1,33 @@
-import { App, Editor, EditorPosition, EditorSuggest, EditorSuggestContext, EditorSuggestTriggerInfo, MarkdownView, Plugin, PluginSettingTab, Setting, TFile } from 'obsidian';
+import { App, Editor, EditorPosition, EditorSuggest, EditorSuggestContext, EditorSuggestTriggerInfo, FuzzySuggestModal, MarkdownView, Notice, Plugin, PluginSettingTab, Setting, TFile, prepareFuzzySearch, SearchResult, FuzzyMatch } from 'obsidian';
 
 interface PluginSettings {
   propertyKey: string;
+  enableForLinking: boolean;
+  enableForQuickSwitcher: boolean;
 }
 
 const DEFAULT_SETTINGS: PluginSettings = {
   propertyKey: 'title',
+  enableForLinking: true,
+  enableForQuickSwitcher: true,
 };
 
 interface SuggestionItem {
-  file?: TFile; // Optional for new note suggestion
+  file?: TFile;
   display: string;
   isCustomDisplay: boolean;
-  isNewNote?: boolean; // Flag for new note creation
+  isNewNote?: boolean;
+}
+
+interface QuickSwitchItem {
+  item: TFile | { isNewNote: boolean; newName: string };
+  match: SearchResult;
 }
 
 class LinkTitleSuggest extends EditorSuggest<SuggestionItem> {
-  private plugin: LinkTitleFromPropertyPlugin;
+  private plugin: PropertyOverFilenamePlugin;
 
-  constructor(plugin: LinkTitleFromPropertyPlugin) {
+  constructor(plugin: PropertyOverFilenamePlugin) {
     super(plugin.app);
     this.plugin = plugin;
   }
@@ -28,18 +37,16 @@ class LinkTitleSuggest extends EditorSuggest<SuggestionItem> {
     const el = (this as any).suggestEl;
     if (el && !el.querySelector('.prompt-instructions')) {
       const instructions = el.createDiv({ cls: 'prompt-instructions' });
-      const p1 = instructions.createDiv({ cls: 'prompt-instruction' });
-      p1.setText('Type # to link heading');
-      const p2 = instructions.createDiv({ cls: 'prompt-instruction' });
-      p2.setText('Type ^ to link blocks');
-      const p3 = instructions.createDiv({ cls: 'prompt-instruction' });
-      p3.setText('Type | to change display text');
+      instructions.createDiv({ cls: 'prompt-instruction' }).setText('Type # to link heading');
+      instructions.createDiv({ cls: 'prompt-instruction' }).setText('Type ^ to link blocks');
+      instructions.createDiv({ cls: 'prompt-instruction' }).setText('Type | to change display text');
     }
   }
 
   onTrigger(cursor: EditorPosition, editor: Editor, file: TFile | null): EditorSuggestTriggerInfo | null {
+    if (!this.plugin.settings.enableForLinking) return null;
     const line = editor.getLine(cursor.line).substring(0, cursor.ch);
-    const match = /\[\[([^#^|\]]+)$/.exec(line);
+    const match = /\[\[([^#^|\]]*)$/.exec(line);
     if (match) {
       return {
         start: { line: cursor.line, ch: line.lastIndexOf('[[') },
@@ -66,13 +73,12 @@ class LinkTitleSuggest extends EditorSuggest<SuggestionItem> {
           isCustomDisplay = true;
         }
       }
-      if (this.fuzzyMatch(display, context.query) || this.fuzzyMatch(file.basename, context.query)) {
+      if (!query || this.fuzzyMatch(display, query) || this.fuzzyMatch(file.basename, query)) {
         suggestions.push({ file, display, isCustomDisplay });
         existingFiles.add(file.basename.toLowerCase());
       }
     });
 
-    // Add new note suggestion as first option if query doesn't match an existing file exactly
     if (query && !existingFiles.has(query.toLowerCase())) {
       suggestions.unshift({
         display: query,
@@ -99,9 +105,9 @@ class LinkTitleSuggest extends EditorSuggest<SuggestionItem> {
     return suggestions.sort((a, b) => {
       const aScore = this.getMatchScore(a.display, query, a.file?.basename ?? '');
       const bScore = this.getMatchScore(b.display, query, b.file?.basename ?? '');
-      if (a.isNewNote) return -1; // New note always first
+      if (a.isNewNote) return -1;
       if (b.isNewNote) return 1;
-      return bScore - aScore || a.display.localeCompare(b.display); // Fallback to score then alphabetical
+      return bScore - aScore || a.display.localeCompare(b.display);
     });
   }
 
@@ -131,6 +137,11 @@ class LinkTitleSuggest extends EditorSuggest<SuggestionItem> {
     if (!activeView || !this.context) return;
     const editor = activeView.editor;
     const { start, end } = this.context;
+    const line = editor.getLine(start.line);
+    let endPos = end;
+    if (line.slice(end.ch, end.ch + 2) === ']]') {
+      endPos = { line: end.line, ch: end.ch + 2 };
+    }
     const useMarkdownLinks = (this.app.vault as any).getConfig('useMarkdownLinks') ?? false;
     let linkText: string;
 
@@ -139,7 +150,6 @@ class LinkTitleSuggest extends EditorSuggest<SuggestionItem> {
       linkText = useMarkdownLinks
         ? `[${suggestion.display}](${encodeURI(newFile.path)})`
         : `[[${newFile.basename}]]`;
-      editor.replaceRange(linkText, { line: start.line, ch: start.ch }, end);
       if (this.app.workspace.activeLeaf) {
         await this.app.workspace.activeLeaf.openFile(newFile);
       }
@@ -150,34 +160,200 @@ class LinkTitleSuggest extends EditorSuggest<SuggestionItem> {
         const linkPath = suggestion.file!.basename;
         linkText = `[[${linkPath}|${suggestion.display}]]`;
       }
-      editor.replaceRange(linkText, { line: start.line, ch: start.ch }, end);
     }
-    editor.setCursor({ line: end.line, ch: end.ch + linkText.length }); // Move cursor to end
+    editor.replaceRange(linkText, { line: start.line, ch: start.ch }, endPos);
+    const newCursorPos = start.ch + linkText.length;
+    try {
+      editor.setCursor({ line: start.line, ch: newCursorPos });
+    } catch (error) {
+      console.error('Error setting cursor:', error);
+      new Notice('Error setting cursor position. Please check console for details.');
+    }
   }
 }
 
-export default class LinkTitleFromPropertyPlugin extends Plugin {
+class QuickSwitchModal extends FuzzySuggestModal<QuickSwitchItem['item']> {
+  private plugin: PropertyOverFilenamePlugin;
+
+  constructor(app: App, plugin: PropertyOverFilenamePlugin) {
+    super(app);
+    this.plugin = plugin;
+    this.limit = 100;
+    this.setPlaceholder('Type to search notes by title or filename...');
+  }
+
+  getItems(): QuickSwitchItem['item'][] {
+    return this.app.vault.getMarkdownFiles();
+  }
+
+  getItemText(item: QuickSwitchItem['item']): string {
+    if ('isNewNote' in item) {
+      return `Create new note: ${item.newName}`;
+    }
+    const display = this.getDisplayName(item);
+    return display + (display !== item.basename ? ` (${item.basename})` : '');
+  }
+
+  getDisplayName(file: TFile): string {
+    const cache = this.app.metadataCache.getFileCache(file);
+    const frontmatter = cache?.frontmatter;
+    const propertyValue = frontmatter?.[this.plugin.settings.propertyKey];
+    if (propertyValue !== undefined && propertyValue !== null) {
+      const trimmed = String(propertyValue).trim();
+      if (trimmed !== '') {
+        return trimmed;
+      }
+    }
+    return file.basename;
+  }
+
+  getSuggestions(query: string): FuzzyMatch<QuickSwitchItem['item']>[] {
+    if (!this.plugin.settings.enableForQuickSwitcher) {
+      return [];
+    }
+
+    const searchQuery = query.trim();
+    const items = this.getItems();
+    const search = prepareFuzzySearch(searchQuery);
+    let results: FuzzyMatch<QuickSwitchItem['item']>[] = items.map((item) => {
+      const text = this.getItemText(item);
+      const match = searchQuery ? search(text) : { score: 0, matches: [] };
+      return { item, match: match || { score: 0, matches: [] } };
+    });
+
+    try {
+      if (searchQuery) {
+        results = results
+          .filter((r) => r.match.matches.length > 0)
+          .sort((a, b) => b.match.score - a.match.score || this.getItemText(a.item).localeCompare(this.getItemText(b.item)))
+          .slice(0, this.limit);
+        const lowerQuery = searchQuery.toLowerCase();
+        const hasExact = items.some((item) => !('isNewNote' in item) && (this.getDisplayName(item).toLowerCase() === lowerQuery || item.basename.toLowerCase() === lowerQuery));
+        if (!hasExact) {
+          const newItem = { isNewNote: true, newName: searchQuery };
+          results.unshift({
+            item: newItem,
+            match: { score: 1000, matches: [[0, searchQuery.length]] },
+          });
+        }
+      } else {
+        results = results
+          .sort((a, b) => this.getItemText(a.item).localeCompare(this.getItemText(b.item)))
+          .slice(0, this.limit);
+      }
+      return results;
+    } catch (error) {
+      console.error('Error generating suggestions:', error);
+      new Notice('Error updating Quick Switcher suggestions. Please check console for details.');
+      return [];
+    }
+  }
+
+  renderSuggestion(suggestion: FuzzyMatch<QuickSwitchItem['item']>, el: HTMLElement): void {
+    const { item, match } = suggestion;
+    const query = this.inputEl.value.trim();
+    const text = this.getItemText(item);
+    const content = el.createDiv({ cls: 'suggestion-content' });
+
+    if ('isNewNote' in item) {
+      content.setText(text);
+      return;
+    }
+
+    if (query && match.matches.length > 0) {
+      let index = 0;
+      const fragment = document.createDocumentFragment();
+      for (const m of match.matches) {
+        fragment.appendText(text.slice(index, m[0]));
+        const highlight = document.createElement('span');
+        highlight.className = 'suggestion-highlight';
+        highlight.appendText(text.slice(m[0], m[1]));
+        fragment.appendChild(highlight);
+        index = m[1];
+      }
+      fragment.appendText(text.slice(index));
+      content.appendChild(fragment);
+    } else {
+      content.setText(text);
+    }
+    content.createDiv({ cls: 'suggestion-note', text: item.path.replace('.md', '') });
+  }
+
+  onChooseItem(item: QuickSwitchItem['item'], evt: MouseEvent | KeyboardEvent): void {
+    if ('isNewNote' in item) {
+      this.app.vault
+        .create(`${item.newName}.md`, '')
+        .then((file) => {
+          this.app.workspace.getLeaf().openFile(file);
+        })
+        .catch((err) => {
+          new Notice(`Error creating note: ${err.message}`);
+        });
+    } else {
+      this.app.workspace.getLeaf().openFile(item);
+    }
+  }
+}
+
+export default class PropertyOverFilenamePlugin extends Plugin {
   settings: PluginSettings;
-  suggest: LinkTitleSuggest;
+  suggest?: LinkTitleSuggest;
+  originalSwitcherCallback?: () => void;
 
   async onload() {
     await this.loadSettings();
-    this.suggest = new LinkTitleSuggest(this);
+    this.updateLinkSuggester();
+    this.updateQuickSwitcher();
+    this.addSettingTab(new SettingTab(this.app, this));
+  }
 
+  updateLinkSuggester() {
     const editorSuggest = (this.app.workspace as any).editorSuggest;
-    if (editorSuggest) {
+    if (!editorSuggest) return;
+
+    if (this.suggest) {
+      editorSuggest.suggests = editorSuggest.suggests.filter((s: any) => s !== this.suggest);
+      this.suggest = undefined;
+    }
+
+    if (this.settings.enableForLinking) {
+      this.suggest = new LinkTitleSuggest(this);
+      this.registerEditorSuggest(this.suggest);
       editorSuggest.suggests = editorSuggest.suggests.filter((s: any) => !s.constructor.name.includes('LinkSuggest'));
       editorSuggest.suggests.unshift(this.suggest);
     }
+  }
 
-    this.registerEditorSuggest(this.suggest);
-    this.addSettingTab(new SettingTab(this.app, this));
+  updateQuickSwitcher() {
+    const command = (this.app as any).commands.commands['switcher:open'];
+    if (!command) {
+      console.error('Failed to find switcher:open command');
+      new Notice('Failed to override Quick Switcher. Please ensure the core Quick Switcher is enabled.');
+      return;
+    }
+
+    if (this.originalSwitcherCallback) {
+      command.callback = this.originalSwitcherCallback;
+      this.originalSwitcherCallback = undefined;
+    }
+
+    if (this.settings.enableForQuickSwitcher) {
+      this.originalSwitcherCallback = command.callback;
+      command.callback = () => {
+        new QuickSwitchModal(this.app, this).open();
+      };
+    }
   }
 
   onunload() {
     const editorSuggest = (this.app.workspace as any).editorSuggest;
-    if (editorSuggest) {
+    if (editorSuggest && this.suggest) {
       editorSuggest.suggests = editorSuggest.suggests.filter((s: any) => s !== this.suggest);
+    }
+
+    const command = (this.app as any).commands.commands['switcher:open'];
+    if (command && this.originalSwitcherCallback) {
+      command.callback = this.originalSwitcherCallback;
     }
   }
 
@@ -185,15 +361,21 @@ export default class LinkTitleFromPropertyPlugin extends Plugin {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
   }
 
-  async saveSettings() {
+  async saveSettings(prevQuickSwitcherState?: boolean) {
+    const quickSwitcherChanged = prevQuickSwitcherState !== undefined && prevQuickSwitcherState !== this.settings.enableForQuickSwitcher;
     await this.saveData(this.settings);
+    this.updateLinkSuggester();
+    this.updateQuickSwitcher();
+    if (quickSwitcherChanged) {
+      new Notice('Please restart Obsidian for Quick Switcher changes to take effect.');
+    }
   }
 }
 
 class SettingTab extends PluginSettingTab {
-  plugin: LinkTitleFromPropertyPlugin;
+  plugin: PropertyOverFilenamePlugin;
 
-  constructor(app: App, plugin: LinkTitleFromPropertyPlugin) {
+  constructor(app: App, plugin: PropertyOverFilenamePlugin) {
     super(app, plugin);
     this.plugin = plugin;
   }
@@ -211,7 +393,32 @@ class SettingTab extends PluginSettingTab {
           .setValue(this.plugin.settings.propertyKey)
           .onChange(async (value) => {
             this.plugin.settings.propertyKey = value || 'title';
-            await this.plugin.saveSettings();
+            await this.plugin.saveSettings(this.plugin.settings.enableForQuickSwitcher);
+          })
+      );
+
+    new Setting(containerEl)
+      .setName('When linking notes')
+      .setDesc('Enable property-based titles in the link suggester ([[).')
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.enableForLinking)
+          .onChange(async (value) => {
+            this.plugin.settings.enableForLinking = value;
+            await this.plugin.saveSettings(this.plugin.settings.enableForQuickSwitcher);
+          })
+      );
+
+    new Setting(containerEl)
+      .setName('In Quick Switcher')
+      .setDesc('Enable property-based titles in the Quick Switcher (Ctrl+O). Restart Obsidian to apply changes.')
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.enableForQuickSwitcher)
+          .onChange(async (value) => {
+            const prevQuickSwitcherState = this.plugin.settings.enableForQuickSwitcher;
+            this.plugin.settings.enableForQuickSwitcher = value;
+            await this.plugin.saveSettings(prevQuickSwitcherState);
           })
       );
   }
