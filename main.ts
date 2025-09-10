@@ -1,4 +1,4 @@
-import { App, Editor, EditorPosition, EditorSuggest, EditorSuggestContext, EditorSuggestTriggerInfo, FuzzySuggestModal, MarkdownView, Notice, Plugin, PluginSettingTab, Setting, TFile, prepareFuzzySearch, SearchResult, FuzzyMatch } from 'obsidian';
+import { App, Editor, EditorPosition, EditorSuggest, EditorSuggestContext, EditorSuggestTriggerInfo, FuzzySuggestModal, MarkdownView, Notice, Platform, Plugin, PluginSettingTab, Setting, TFile, prepareFuzzySearch, SearchResult, FuzzyMatch } from 'obsidian';
 
 interface PluginSettings {
   propertyKey: string;
@@ -341,6 +341,20 @@ export default class PropertyOverFilenamePlugin extends Plugin {
     await this.loadSettings();
     this.updateLinkSuggester();
     this.updateQuickSwitcher();
+
+    // Mobile Quick Switcher override
+    if (Platform.isMobile) {
+      this.registerEvent(
+        this.app.workspace.on('quick-preview', (file: TFile, content: string) => {
+          if (this.settings.enableForQuickSwitcher) {
+            // Prevent default Quick Switcher and open custom modal
+            new QuickSwitchModal(this.app, this).open();
+            return false; // Cancel default behavior
+          }
+        })
+      );
+    }
+
     this.addSettingTab(new SettingTab(this.app, this));
   }
 
@@ -444,7 +458,7 @@ class SettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('In Quick Switcher')
-      .setDesc('Enable property-based titles in the Quick Switcher (Ctrl+O).')
+      .setDesc('Enable property-based titles in the Quick Switcher (Ctrl+O or mobile plus icon).')
       .addToggle((toggle) =>
         toggle
           .setValue(this.plugin.settings.enableForQuickSwitcher)
