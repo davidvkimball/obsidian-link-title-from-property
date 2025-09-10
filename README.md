@@ -37,11 +37,10 @@ Content...
 - Link suggester shows `My Custom Title`; searchable by `My Custom Title`, `note` (if filename search enabled), or `Alias1`/`Alias2` (if alias search enabled).
 - Quick Switcher shows `My Custom Title (note)` (if filename differs and search enabled).
 
-## Privacy
-- Operates offline, only reads vault files’ frontmatter and filenames.
-- No data collection or external services.
-
 ## Development
 - Build: `npm install && npm run build`
 - Test: Copy `main.js` and `manifest.json` to plugin folder, reload Obsidian.
 - Issues: Check console (`Ctrl+Shift+I`) for errors like `Error setting cursor`.
+
+## License
+MIT License
