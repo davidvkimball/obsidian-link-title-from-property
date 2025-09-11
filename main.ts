@@ -1,11 +1,40 @@
 import { App, Editor, EditorPosition, EditorSuggest, EditorSuggestContext, EditorSuggestTriggerInfo, FuzzySuggestModal, MarkdownView, Notice, Platform, Plugin, PluginSettingTab, Setting, TFile, prepareFuzzySearch, SearchResult, FuzzyMatch } from 'obsidian';
 
+// Internal API interfaces for better type safety
+interface EditorSuggestInternal extends EditorSuggest<any> {
+  suggestEl?: HTMLElement;
+}
+
+interface VaultInternal {
+  getConfig(key: string): boolean;
+}
+
+interface WorkspaceInternal {
+  editorSuggest?: {
+    suggests: EditorSuggest<any>[];
+  };
+}
+
+interface AppInternal {
+  commands: {
+    commands: Record<string, { callback: () => void }>;
+  };
+}
+
 interface PluginSettings {
   propertyKey: string;
   enableForLinking: boolean;
   enableForQuickSwitcher: boolean;
   includeFilenameInSearch: boolean;
   includeAliasesInSearch: boolean;
+}
+
+interface CachedFileData {
+  file: TFile;
+  displayName: string;
+  aliases: string[];
+  lastModified: number;
+  isCustomDisplay: boolean;
 }
 
 const DEFAULT_SETTINGS: PluginSettings = {
@@ -30,21 +59,41 @@ interface QuickSwitchItem {
 
 class LinkTitleSuggest extends EditorSuggest<SuggestionItem> {
   private plugin: PropertyOverFilenamePlugin;
+  private fileCache: Map<string, CachedFileData> = new Map();
+  private searchTimeout: number | null = null;
 
   constructor(plugin: PropertyOverFilenamePlugin) {
     super(plugin.app);
     this.plugin = plugin;
+    this.buildFileCache();
   }
 
   open(): void {
     super.open();
-    const el = (this as any).suggestEl;
+    const el = (this as EditorSuggestInternal).suggestEl;
     if (el && !el.querySelector('.prompt-instructions')) {
       const instructions = el.createDiv({ cls: 'prompt-instructions' });
       instructions.createDiv({ cls: 'prompt-instruction' }).setText('Type # to link heading');
       instructions.createDiv({ cls: 'prompt-instruction' }).setText('Type ^ to link blocks');
       instructions.createDiv({ cls: 'prompt-instruction' }).setText('Type | to change display text');
     }
+    
+    // Add keyboard navigation improvements
+    this.addKeyboardNavigation();
+  }
+
+  private addKeyboardNavigation(): void {
+    const el = (this as EditorSuggestInternal).suggestEl;
+    if (!el) return;
+
+    // Add escape key handling
+    el.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        this.close();
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    });
   }
 
   onTrigger(cursor: EditorPosition, editor: Editor, file: TFile | null): EditorSuggestTriggerInfo | null {
@@ -61,35 +110,70 @@ class LinkTitleSuggest extends EditorSuggest<SuggestionItem> {
     return null;
   }
 
+  private buildFileCache(): void {
+    this.fileCache.clear();
+    this.app.vault.getMarkdownFiles().forEach((file) => {
+      this.updateFileCache(file);
+    });
+  }
+
+  private updateFileCache(file: TFile): void {
+    const cache = this.app.metadataCache.getFileCache(file);
+    const frontmatter = cache?.frontmatter;
+    let displayName = file.basename;
+    let isCustomDisplay = false;
+    let aliases: string[] = [];
+
+    if (frontmatter && frontmatter[this.plugin.settings.propertyKey] !== undefined && frontmatter[this.plugin.settings.propertyKey] !== null) {
+      const propertyValue = String(frontmatter[this.plugin.settings.propertyKey]).trim();
+      if (propertyValue !== '') {
+        displayName = propertyValue;
+        isCustomDisplay = true;
+      }
+    }
+
+    if (frontmatter?.aliases) {
+      aliases = Array.isArray(frontmatter.aliases) ? frontmatter.aliases : [frontmatter.aliases];
+      aliases = aliases.map(alias => String(alias).trim()).filter(alias => alias !== '');
+    }
+
+    this.fileCache.set(file.path, {
+      file,
+      displayName,
+      aliases,
+      lastModified: file.stat.mtime,
+      isCustomDisplay
+    });
+  }
+
   getSuggestions(context: EditorSuggestContext): SuggestionItem[] {
     const query = context.query.trim();
+    return this.performSearch(query);
+  }
+
+  private performSearch(query: string): SuggestionItem[] {
     const suggestions: SuggestionItem[] = [];
     const existingFiles = new Set<string>();
-    this.app.vault.getMarkdownFiles().forEach((file) => {
-      const cache = this.app.metadataCache.getFileCache(file);
-      const frontmatter = cache?.frontmatter;
-      let display = file.basename;
-      let isCustomDisplay = false;
-      if (frontmatter && frontmatter[this.plugin.settings.propertyKey] !== undefined && frontmatter[this.plugin.settings.propertyKey] !== null) {
-        const propertyValue = String(frontmatter[this.plugin.settings.propertyKey]).trim();
-        if (propertyValue !== '') {
-          display = propertyValue;
-          isCustomDisplay = true;
-        }
-      }
-      let matches = !query || this.fuzzyMatch(display, query);
+
+    // Use cached data for much faster search
+    for (const cachedData of this.fileCache.values()) {
+      const { file, displayName, aliases, isCustomDisplay } = cachedData;
+      
+      let matches = !query || this.fuzzyMatch(displayName, query);
+      
       if (this.plugin.settings.includeFilenameInSearch) {
         matches = matches || this.fuzzyMatch(file.basename, query);
       }
-      if (this.plugin.settings.includeAliasesInSearch && frontmatter?.aliases) {
-        const aliases = Array.isArray(frontmatter.aliases) ? frontmatter.aliases : [frontmatter.aliases];
-        matches = matches || aliases.some((alias: string) => this.fuzzyMatch(String(alias).trim(), query));
+      
+      if (this.plugin.settings.includeAliasesInSearch && aliases.length > 0) {
+        matches = matches || aliases.some(alias => this.fuzzyMatch(alias, query));
       }
+      
       if (matches) {
-        suggestions.push({ file, display, isCustomDisplay });
+        suggestions.push({ file, display: displayName, isCustomDisplay });
         existingFiles.add(file.basename.toLowerCase());
       }
-    });
+    }
 
     if (query && !existingFiles.has(query.toLowerCase())) {
       suggestions.unshift({
@@ -128,11 +212,29 @@ class LinkTitleSuggest extends EditorSuggest<SuggestionItem> {
     const lowerDisplay = display.toLowerCase();
     const lowerBasename = basename.toLowerCase();
     const lowerQuery = query.toLowerCase();
-    if (lowerDisplay.startsWith(lowerQuery)) score += 10;
-    else if (lowerDisplay.includes(lowerQuery)) score += 5;
-    if (this.plugin.settings.includeFilenameInSearch && lowerBasename.startsWith(lowerQuery)) score += 8;
-    else if (this.plugin.settings.includeFilenameInSearch && lowerBasename.includes(lowerQuery)) score += 4;
-    return score;
+    
+    // Exact matches get highest score
+    if (lowerDisplay === lowerQuery) score += 1000;
+    else if (lowerBasename === lowerQuery) score += 900;
+    
+    // Starts with query gets high score
+    else if (lowerDisplay.startsWith(lowerQuery)) score += 100;
+    else if (this.plugin.settings.includeFilenameInSearch && lowerBasename.startsWith(lowerQuery)) score += 80;
+    
+    // Contains query gets medium score
+    else if (lowerDisplay.includes(lowerQuery)) score += 50;
+    else if (this.plugin.settings.includeFilenameInSearch && lowerBasename.includes(lowerQuery)) score += 30;
+    
+    // Word boundary matches get bonus
+    const wordBoundaryRegex = new RegExp(`\\b${lowerQuery}`, 'i');
+    if (wordBoundaryRegex.test(lowerDisplay)) score += 20;
+    if (this.plugin.settings.includeFilenameInSearch && wordBoundaryRegex.test(lowerBasename)) score += 15;
+    
+    // Penalty for very long names
+    const lengthPenalty = Math.max(0, (display.length - query.length) * 0.1);
+    score -= lengthPenalty;
+    
+    return Math.max(0, score);
   }
 
   renderSuggestion(suggestion: SuggestionItem, el: HTMLElement): void {
@@ -154,7 +256,7 @@ class LinkTitleSuggest extends EditorSuggest<SuggestionItem> {
     if (line.slice(end.ch, end.ch + 2) === ']]') {
       endPos = { line: end.line, ch: end.ch + 2 };
     }
-    const useMarkdownLinks = (this.app.vault as any).getConfig('useMarkdownLinks') ?? false;
+    const useMarkdownLinks = (this.app.vault as unknown as VaultInternal).getConfig('useMarkdownLinks') ?? false;
     let linkText: string;
 
     if (suggestion.isNewNote) {
@@ -186,12 +288,78 @@ class LinkTitleSuggest extends EditorSuggest<SuggestionItem> {
 
 class QuickSwitchModal extends FuzzySuggestModal<QuickSwitchItem['item']> {
   private plugin: PropertyOverFilenamePlugin;
+  private fileCache: Map<string, CachedFileData> = new Map();
+  private recentFiles: TFile[] = [];
+  private searchTimeout: number | null = null;
 
   constructor(app: App, plugin: PropertyOverFilenamePlugin) {
     super(app);
     this.plugin = plugin;
     this.limit = 100;
     this.setPlaceholder('Type to search notes by title or filename...');
+    this.buildFileCache();
+    this.updateRecentFiles();
+    this.addKeyboardNavigation();
+  }
+
+  private addKeyboardNavigation(): void {
+    // Add escape key handling
+    this.inputEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        this.close();
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    });
+  }
+
+  private buildFileCache(): void {
+    this.fileCache.clear();
+    this.app.vault.getMarkdownFiles().forEach((file) => {
+      this.updateFileCache(file);
+    });
+  }
+
+  private updateFileCache(file: TFile): void {
+    const cache = this.app.metadataCache.getFileCache(file);
+    const frontmatter = cache?.frontmatter;
+    let displayName = file.basename;
+    let isCustomDisplay = false;
+    let aliases: string[] = [];
+
+    if (frontmatter && frontmatter[this.plugin.settings.propertyKey] !== undefined && frontmatter[this.plugin.settings.propertyKey] !== null) {
+      const propertyValue = String(frontmatter[this.plugin.settings.propertyKey]).trim();
+      if (propertyValue !== '') {
+        displayName = propertyValue;
+        isCustomDisplay = true;
+      }
+    }
+
+    if (frontmatter?.aliases) {
+      aliases = Array.isArray(frontmatter.aliases) ? frontmatter.aliases : [frontmatter.aliases];
+      aliases = aliases.map(alias => String(alias).trim()).filter(alias => alias !== '');
+    }
+
+    this.fileCache.set(file.path, {
+      file,
+      displayName,
+      aliases,
+      lastModified: file.stat.mtime,
+      isCustomDisplay
+    });
+  }
+
+  private updateRecentFiles(): void {
+    // Get recently opened files from workspace
+    const recentFiles = this.app.workspace.getLeavesOfType('markdown')
+      .map(leaf => leaf.view)
+      .filter((view): view is MarkdownView => view instanceof MarkdownView)
+      .map(view => view.file)
+      .filter((file): file is TFile => file !== null) // Filter out null files
+      .filter((file, index, self) => self.indexOf(file) === index) // Remove duplicates
+      .slice(0, 10); // Limit to 10 recent files
+    
+    this.recentFiles = recentFiles;
   }
 
   getItems(): QuickSwitchItem['item'][] {
@@ -225,49 +393,78 @@ class QuickSwitchModal extends FuzzySuggestModal<QuickSwitchItem['item']> {
     }
 
     const searchQuery = query.trim();
-    const items = this.getItems();
+    
+    // Clear previous timeout
+    if (this.searchTimeout) {
+      clearTimeout(this.searchTimeout);
+    }
+
+    // If no query, show recent files
+    if (!searchQuery) {
+      return this.getRecentFilesResults();
+    }
+
+    return this.performSearch(searchQuery);
+  }
+
+  private getRecentFilesResults(): FuzzyMatch<QuickSwitchItem['item']>[] {
+    this.updateRecentFiles();
+    return this.recentFiles.map(file => ({
+      item: file,
+      match: { score: 1000, matches: [] }
+    }));
+  }
+
+  private performSearch(searchQuery: string): FuzzyMatch<QuickSwitchItem['item']>[] {
     const search = prepareFuzzySearch(searchQuery);
-    let results: FuzzyMatch<QuickSwitchItem['item']>[] = items.map((item) => {
-      const text = this.getItemText(item);
-      const cache = this.app.metadataCache.getFileCache(item as TFile);
-      const frontmatter = cache?.frontmatter;
-      const match = searchQuery ? search(text) ?? { score: 0, matches: [] } : { score: 0, matches: [] };
+    const results: FuzzyMatch<QuickSwitchItem['item']>[] = [];
+
+    // Use cached data for much faster search
+    for (const cachedData of this.fileCache.values()) {
+      const { file, displayName, aliases } = cachedData;
+      const text = this.getItemText(file);
+      const match = search(text) ?? { score: 0, matches: [] };
+      
       let aliasMatch = false;
-      if (this.plugin.settings.includeAliasesInSearch && frontmatter?.aliases) {
-        const aliases = Array.isArray(frontmatter.aliases) ? frontmatter.aliases : [frontmatter.aliases];
-        aliasMatch = aliases.some((alias: string) => this.fuzzyMatch(String(alias).trim(), searchQuery));
+      if (this.plugin.settings.includeAliasesInSearch && aliases.length > 0) {
+        aliasMatch = aliases.some(alias => this.fuzzyMatch(alias, searchQuery));
       }
+      
       if (aliasMatch && match.matches.length === 0) {
-        return { item, match: { score: -0.1, matches: [[0, searchQuery.length]] } };
+        results.push({ item: file, match: { score: -0.1, matches: [[0, searchQuery.length]] } });
+      } else if (match.matches.length > 0) {
+        results.push({ item: file, match });
       }
-      return { item, match };
-    });
+    }
 
     try {
-      if (searchQuery) {
-        results = results
-          .filter((r) => r.match.matches.length > 0)
-          .sort((a, b) => b.match.score - a.match.score || this.getItemText(a.item).localeCompare(this.getItemText(b.item)))
-          .slice(0, this.limit);
-        const lowerQuery = searchQuery.toLowerCase();
-        const hasExact = items.some((item) => !('isNewNote' in item) && (
-          this.getDisplayName(item as TFile).toLowerCase() === lowerQuery ||
-          (this.plugin.settings.includeFilenameInSearch && (item as TFile).basename.toLowerCase() === lowerQuery) ||
-          (this.plugin.settings.includeAliasesInSearch && this.app.metadataCache.getFileCache(item as TFile)?.frontmatter?.aliases?.some((alias: string) => String(alias).trim().toLowerCase() === lowerQuery))
-        ));
-        if (!hasExact) {
-          const newItem = { isNewNote: true, newName: searchQuery };
-          results.unshift({
-            item: newItem,
-            match: { score: 1000, matches: [[0, searchQuery.length]] },
-          });
-        }
-      } else {
-        results = results
-          .sort((a, b) => this.getItemText(a.item).localeCompare(this.getItemText(b.item)))
-          .slice(0, this.limit);
+      // Sort by score and then alphabetically
+      results.sort((a, b) => {
+        const scoreDiff = b.match.score - a.match.score;
+        if (scoreDiff !== 0) return scoreDiff;
+        return this.getItemText(a.item).localeCompare(this.getItemText(b.item));
+      });
+
+      // Check for exact matches
+      const lowerQuery = searchQuery.toLowerCase();
+      const hasExact = results.some(r => 
+        r.item instanceof TFile && (
+          this.getDisplayName(r.item).toLowerCase() === lowerQuery ||
+          (this.plugin.settings.includeFilenameInSearch && r.item.basename.toLowerCase() === lowerQuery) ||
+          (this.plugin.settings.includeAliasesInSearch && this.fileCache.get(r.item.path)?.aliases.some(alias => alias.toLowerCase() === lowerQuery))
+        )
+      );
+
+      // Add new note option if no exact match
+      if (!hasExact) {
+        const newItem = { isNewNote: true, newName: searchQuery };
+        results.unshift({
+          item: newItem,
+          match: { score: 1000, matches: [[0, searchQuery.length]] },
+        });
       }
-      return results;
+
+      return results.slice(0, this.limit);
     } catch (error) {
       console.error('Error generating suggestions:', error);
       new Notice('Error updating Quick Switcher suggestions. Please check console for details.');
@@ -313,7 +510,9 @@ class QuickSwitchModal extends FuzzySuggestModal<QuickSwitchItem['item']> {
     } else {
       content.setText(text);
     }
-    content.createDiv({ cls: 'suggestion-note', text: item.path.replace('.md', '') });
+    if (item instanceof TFile) {
+      content.createDiv({ cls: 'suggestion-note', text: item.path.replace('.md', '') });
+    }
   }
 
   onChooseItem(item: QuickSwitchItem['item'], evt: MouseEvent | KeyboardEvent): void {
@@ -342,6 +541,31 @@ export default class PropertyOverFilenamePlugin extends Plugin {
     this.updateLinkSuggester();
     this.updateQuickSwitcher();
 
+    // Register file change events to invalidate cache
+    this.registerEvent(
+      this.app.vault.on('modify', (file) => {
+        if (file instanceof TFile && file.extension === 'md') {
+          this.invalidateCache(file);
+        }
+      })
+    );
+
+    this.registerEvent(
+      this.app.vault.on('rename', (file, oldPath) => {
+        if (file instanceof TFile && file.extension === 'md') {
+          this.invalidateCache(file);
+        }
+      })
+    );
+
+    this.registerEvent(
+      this.app.vault.on('delete', (file) => {
+        if (file instanceof TFile && file.extension === 'md') {
+          this.invalidateCache(file);
+        }
+      })
+    );
+
     // Mobile Quick Switcher override
     if (Platform.isMobile) {
       this.registerEvent(
@@ -358,8 +582,14 @@ export default class PropertyOverFilenamePlugin extends Plugin {
     this.addSettingTab(new SettingTab(this.app, this));
   }
 
+  private invalidateCache(file: TFile): void {
+    if (this.suggest) {
+      (this.suggest as any).updateFileCache(file);
+    }
+  }
+
   updateLinkSuggester() {
-    const editorSuggest = (this.app.workspace as any).editorSuggest;
+    const editorSuggest = (this.app.workspace as WorkspaceInternal).editorSuggest;
     if (!editorSuggest) return;
 
     if (this.suggest) {
@@ -376,7 +606,7 @@ export default class PropertyOverFilenamePlugin extends Plugin {
   }
 
   updateQuickSwitcher() {
-    const command = (this.app as any).commands.commands['switcher:open'];
+    const command = (this.app as unknown as AppInternal).commands.commands['switcher:open'];
     if (!command) {
       console.error('Failed to find switcher:open command');
       new Notice('Failed to override Quick Switcher. Please ensure the core Quick Switcher is enabled.');
@@ -397,12 +627,12 @@ export default class PropertyOverFilenamePlugin extends Plugin {
   }
 
   onunload() {
-    const editorSuggest = (this.app.workspace as any).editorSuggest;
+    const editorSuggest = (this.app.workspace as WorkspaceInternal).editorSuggest;
     if (editorSuggest && this.suggest) {
       editorSuggest.suggests = editorSuggest.suggests.filter((s: any) => s !== this.suggest);
     }
 
-    const command = (this.app as any).commands.commands['switcher:open'];
+    const command = (this.app as unknown as AppInternal).commands.commands['switcher:open'];
     if (command && this.originalSwitcherCallback) {
       command.callback = this.originalSwitcherCallback;
     }
@@ -433,7 +663,7 @@ class SettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Property key')
-      .setDesc('The frontmatter property to use as the display title (e.g., "title" or "display_title").')
+      .setDesc('The property to use as the display title.')
       .addText((text) =>
         text
           .setPlaceholder('title')
@@ -446,7 +676,7 @@ class SettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('When linking notes')
-      .setDesc('Enable property-based titles in the link suggester ([[).')
+      .setDesc('Enable property-based titles in the link suggester.')
       .addToggle((toggle) =>
         toggle
           .setValue(this.plugin.settings.enableForLinking)
@@ -458,7 +688,7 @@ class SettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('In Quick Switcher')
-      .setDesc('Enable property-based titles in the Quick Switcher (Ctrl+O or mobile plus icon).')
+      .setDesc('Enable property-based titles in the quick switcher.')
       .addToggle((toggle) =>
         toggle
           .setValue(this.plugin.settings.enableForQuickSwitcher)
@@ -471,7 +701,7 @@ class SettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Include filename in fuzzy searches')
-      .setDesc('Include note filenames in fuzzy search results for link suggester and Quick Switcher.')
+      .setDesc('Include note filenames in fuzzy search results for link suggester and quick switcher.')
       .addToggle((toggle) =>
         toggle
           .setValue(this.plugin.settings.includeFilenameInSearch)
@@ -483,7 +713,7 @@ class SettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Include aliases in fuzzy searches')
-      .setDesc('Include frontmatter aliases in fuzzy search results for link suggester and Quick Switcher.')
+      .setDesc('Include property aliases in fuzzy search results for link suggester and quick switcher.')
       .addToggle((toggle) =>
         toggle
           .setValue(this.plugin.settings.includeAliasesInSearch)

@@ -1,0 +1,148 @@
+/* Property Over Filename Plugin Styles */
+
+/* Enhanced suggestion styling */
+.suggestion-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.suggestion-title {
+  font-weight: 500;
+  color: var(--text-normal);
+}
+
+.suggestion-note {
+  font-size: 0.85em;
+  color: var(--text-muted);
+  opacity: 0.8;
+}
+
+/* Highlight matching text in suggestions */
+.suggestion-highlight {
+  background-color: var(--text-highlight-bg);
+  color: var(--text-highlight-bg-active);
+  font-weight: 600;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+/* Property-based display indicator */
+.suggestion-content .suggestion-title[data-custom-display="true"] {
+  color: var(--interactive-accent);
+  font-weight: 600;
+}
+
+/* Recent files styling */
+.suggestion-content[data-recent="true"] .suggestion-title {
+  color: var(--text-accent);
+}
+
+/* New note creation styling */
+.suggestion-content[data-new-note="true"] .suggestion-title {
+  color: var(--interactive-accent);
+  font-style: italic;
+}
+
+.suggestion-content[data-new-note="true"] .suggestion-title::before {
+  content: "📝 ";
+  margin-right: 4px;
+}
+
+/* Enhanced prompt instructions */
+.prompt-instructions {
+  padding: 8px 12px;
+  background-color: var(--background-secondary);
+  border-top: 1px solid var(--background-modifier-border);
+  font-size: 0.85em;
+  color: var(--text-muted);
+}
+
+.prompt-instruction {
+  margin: 2px 0;
+}
+
+/* Quick switcher enhancements */
+.modal .suggestion-item {
+  padding: 8px 12px;
+  border-radius: 4px;
+  transition: background-color 0.1s ease;
+}
+
+.modal .suggestion-item:hover {
+  background-color: var(--background-modifier-hover);
+}
+
+.modal .suggestion-item.is-selected {
+  background-color: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+/* Settings tab enhancements */
+.setting-item-description {
+  color: var(--text-muted);
+  font-size: 0.9em;
+  line-height: 1.4;
+}
+
+.setting-item-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Button styling for settings */
+.setting-item .setting-button {
+  background-color: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border: none;
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-size: 0.9em;
+  cursor: pointer;
+  transition: background-color 0.1s ease;
+}
+
+.setting-item .setting-button:hover {
+  background-color: var(--interactive-accent-hover);
+}
+
+.setting-item .setting-button.setting-button-warning {
+  background-color: var(--text-error);
+}
+
+.setting-item .setting-button.setting-button-warning:hover {
+  background-color: var(--text-error-hover);
+}
+
+/* Mobile-specific adjustments */
+@media (max-width: 768px) {
+  .suggestion-content {
+    padding: 4px 0;
+  }
+  
+  .suggestion-title {
+    font-size: 0.95em;
+  }
+  
+  .suggestion-note {
+    font-size: 0.8em;
+  }
+}
+
+/* Dark mode adjustments */
+.theme-dark .suggestion-highlight {
+  background-color: rgba(255, 255, 0, 0.3);
+  color: var(--text-normal);
+}
+
+/* Animation for smooth transitions */
+.suggestion-item {
+  transition: all 0.15s ease;
+}
+
+/* Focus states for accessibility */
+.suggestion-item:focus-visible {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: 2px;
+}
