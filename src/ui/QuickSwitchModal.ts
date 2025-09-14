@@ -29,7 +29,7 @@ export class QuickSwitchModal extends FuzzySuggestModal<QuickSwitchItem['item']>
     });
   }
 
-  private buildFileCache(): void {
+  buildFileCache(): void {
     this.fileCache = buildFileCache(
       this.app.vault.getMarkdownFiles(),
       this.app.metadataCache,

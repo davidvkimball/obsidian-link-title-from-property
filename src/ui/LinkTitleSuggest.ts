@@ -55,7 +55,7 @@ export class LinkTitleSuggest extends EditorSuggest<SuggestionItem> {
     return null;
   }
 
-  private buildFileCache(): void {
+  buildFileCache(): void {
     this.fileCache = buildFileCache(
       this.app.vault.getMarkdownFiles(),
       this.app.metadataCache,

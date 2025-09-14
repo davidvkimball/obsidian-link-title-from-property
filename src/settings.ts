@@ -6,6 +6,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   enableForQuickSwitcher: true,
   includeFilenameInSearch: true,
   includeAliasesInSearch: true,
+  enableForDragDrop: true,
 };
 
 export function validateSettings(settings: PluginSettings): { isValid: boolean; errors: string[] } {

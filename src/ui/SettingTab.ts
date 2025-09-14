@@ -75,5 +75,17 @@ export class SettingTab extends PluginSettingTab {
             await this.plugin.saveSettings(this.plugin.settings.enableForQuickSwitcher);
           })
       );
+
+    new Setting(containerEl)
+      .setName('When dragging notes')
+      .setDesc('Use property-based titles when dragging notes from the file explorer.')
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.enableForDragDrop)
+          .onChange(async (value) => {
+            this.plugin.settings.enableForDragDrop = value;
+            await this.plugin.saveSettings(this.plugin.settings.enableForQuickSwitcher);
+          })
+      );
   }
 }
