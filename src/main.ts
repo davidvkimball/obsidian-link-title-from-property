@@ -305,10 +305,17 @@ export default class PropertyOverFilenamePlugin extends Plugin {
     }
     
     // Look for the default link that was just inserted
-    // Obsidian inserts links with just the filename, not the full path
+    // Obsidian can insert links in different formats based on settings:
+    // - "Shortest path when possible": [[filename]] or [[folder/filename]]
+    // - "Relative path to file": [[folder/filename]] 
+    // - "Absolute path in vault": [[/folder/filename]]
+    const escapedBasename = file.basename.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const escapedPath = file.path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const escapedPathNoExt = file.path.replace('.md', '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    
     const defaultLinkPattern = useMarkdownLinks 
-      ? new RegExp(`\\[${file.basename}\\]\\(${file.basename.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\.md\\)`)
-      : new RegExp(`\\[\\[${file.basename.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\]\\]`);
+      ? new RegExp(`\\[${escapedBasename}\\]\\(${escapedPathNoExt}\\)`)
+      : new RegExp(`\\[\\[(?:/)?${escapedPathNoExt}\\]\\]`);
     
     const match = content.match(defaultLinkPattern);
     if (match) {
