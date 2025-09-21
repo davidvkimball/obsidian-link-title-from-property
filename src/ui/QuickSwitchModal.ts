@@ -17,6 +17,9 @@ export class QuickSwitchModal extends FuzzySuggestModal<QuickSwitchItem['item']>
     this.updateRecentFiles();
     this.addKeyboardNavigation();
     this.addFooter();
+    
+    // Add scoping class to prevent CSS from affecting other modals
+    this.containerEl.addClass('property-over-filename-modal');
   }
 
   private addKeyboardNavigation(): void {
@@ -232,8 +235,27 @@ export class QuickSwitchModal extends FuzzySuggestModal<QuickSwitchItem['item']>
     const text = this.getItemText(item);
     
     if ('isNewNote' in item) {
-      // For new notes, just show the text without arrow
-      el.setText(text);
+      // For new notes, use the same structure as other items with file-plus icon
+      el.addClass('mod-complex');
+      
+      // Create the main suggestion container
+      const suggestionContent = el.createDiv({ cls: 'suggestion-content' });
+      
+      // Main title with new note indicator
+      const titleEl = suggestionContent.createDiv({ cls: 'suggestion-title' });
+      titleEl.setText(text);
+      titleEl.setAttr('data-new-note', 'true');
+      
+      // Add suggestion-aux with file-plus icon
+      const suggestionAux = el.createDiv({ cls: 'suggestion-aux' });
+      const suggestionFlair = suggestionAux.createSpan({ 
+        cls: 'suggestion-flair', 
+        attr: { 'aria-label': 'Create new note' } 
+      });
+      
+      // File-plus icon for new notes
+      suggestionFlair.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-file-plus"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path><polyline points="14,2 14,8 20,8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg>`;
+      
       return;
     }
 

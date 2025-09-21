@@ -16,11 +16,16 @@ export class LinkTitleSuggest extends EditorSuggest<SuggestionItem> {
   open(): void {
     super.open();
     const el = (this as EditorSuggestInternal).suggestEl;
-    if (el && !el.querySelector('.prompt-instructions')) {
-      const instructions = el.createDiv({ cls: 'prompt-instructions' });
-      instructions.createDiv({ cls: 'prompt-instruction' }).setText('Type # to link heading');
-      instructions.createDiv({ cls: 'prompt-instruction' }).setText('Type ^ to link blocks');
-      instructions.createDiv({ cls: 'prompt-instruction' }).setText('Type | to change display text');
+    if (el) {
+      // Add scoping class to prevent CSS from affecting other suggestion systems
+      el.addClass('property-over-filename-suggestion');
+      
+      if (!el.querySelector('.prompt-instructions')) {
+        const instructions = el.createDiv({ cls: 'prompt-instructions' });
+        instructions.createDiv({ cls: 'prompt-instruction' }).setText('Type # to link heading');
+        instructions.createDiv({ cls: 'prompt-instruction' }).setText('Type ^ to link blocks');
+        instructions.createDiv({ cls: 'prompt-instruction' }).setText('Type | to change display text');
+      }
     }
     
     // Add keyboard navigation improvements
@@ -121,11 +126,12 @@ export class LinkTitleSuggest extends EditorSuggest<SuggestionItem> {
       }
     }
 
-    if (query && !existingFiles.has(query.toLowerCase())) {
-      suggestions.unshift({
-        display: query,
+    // If no suggestions found, add a "No match found" item
+    if (suggestions.length === 0 && query) {
+      suggestions.push({
+        display: 'No match found',
         isCustomDisplay: false,
-        isNewNote: true,
+        isNoMatch: true
       });
     }
 
@@ -136,14 +142,18 @@ export class LinkTitleSuggest extends EditorSuggest<SuggestionItem> {
     return suggestions.sort((a, b) => {
       const aScore = getMatchScore(a.display, query, a.file?.basename ?? '', this.plugin.settings.includeFilenameInSearch);
       const bScore = getMatchScore(b.display, query, b.file?.basename ?? '', this.plugin.settings.includeFilenameInSearch);
-      if (a.isNewNote) return -1;
-      if (b.isNewNote) return 1;
       return bScore - aScore || a.display.localeCompare(b.display);
     });
   }
 
   renderSuggestion(suggestion: SuggestionItem, el: HTMLElement): void {
     el.empty();
+    
+    if (suggestion.isNoMatch) {
+      // For "No match found", show just the text
+      el.setText(suggestion.display);
+      return;
+    }
     
     if (suggestion.file) {
       // Check what type of result this is
@@ -185,10 +195,6 @@ export class LinkTitleSuggest extends EditorSuggest<SuggestionItem> {
         content.createDiv({ cls: 'suggestion-title', text: suggestion.display });
         content.createDiv({ cls: 'suggestion-note', text: suggestion.file.path.replace('.md', '') });
       }
-    } else {
-      // For new note suggestions, show without icon
-      const content = el.createDiv({ cls: 'suggestion-content' });
-      content.createDiv({ cls: 'suggestion-title', text: suggestion.display });
     }
   }
 
@@ -213,6 +219,11 @@ export class LinkTitleSuggest extends EditorSuggest<SuggestionItem> {
   }
 
   async selectSuggestion(suggestion: SuggestionItem, evt: MouseEvent | KeyboardEvent): Promise<void> {
+    // Don't do anything for "No match found"
+    if (suggestion.isNoMatch) {
+      return;
+    }
+    
     const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
     if (!activeView || !this.context) return;
     const editor = activeView.editor;
@@ -225,21 +236,11 @@ export class LinkTitleSuggest extends EditorSuggest<SuggestionItem> {
     const useMarkdownLinks = (this.app.vault as any).getConfig('useMarkdownLinks') ?? false;
     let linkText: string;
 
-    if (suggestion.isNewNote) {
-      const newFile = await this.app.vault.create(`${suggestion.display}.md`, '');
-      linkText = useMarkdownLinks
-        ? `[${suggestion.display}](${encodeURI(newFile.path)})`
-        : `[[${newFile.basename}]]`;
-      if (this.app.workspace.activeLeaf) {
-        await this.app.workspace.activeLeaf.openFile(newFile);
-      }
+    if (useMarkdownLinks) {
+      linkText = `[${suggestion.display}](${encodeURI(suggestion.file!.path)})`;
     } else {
-      if (useMarkdownLinks) {
-        linkText = `[${suggestion.display}](${encodeURI(suggestion.file!.path)})`;
-      } else {
-        const linkPath = suggestion.file!.basename;
-        linkText = `[[${linkPath}|${suggestion.display}]]`;
-      }
+      const linkPath = suggestion.file!.basename;
+      linkText = `[[${linkPath}|${suggestion.display}]]`;
     }
     editor.replaceRange(linkText, { line: start.line, ch: start.ch }, endPos);
     const newCursorPos = start.ch + linkText.length;

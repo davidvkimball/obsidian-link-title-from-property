@@ -21,7 +21,7 @@ export interface SuggestionItem {
   file?: TFile;
   display: string;
   isCustomDisplay: boolean;
-  isNewNote?: boolean;
+  isNoMatch?: boolean;
 }
 
 export interface QuickSwitchItem {

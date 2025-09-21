@@ -13,6 +13,9 @@ export class SettingTab extends PluginSettingTab {
   display(): void {
     const { containerEl } = this;
     containerEl.empty();
+    
+    // Add scoping class to prevent CSS from affecting other settings
+    containerEl.addClass('property-over-filename-settings');
 
     new Setting(containerEl)
       .setName('Property key')
