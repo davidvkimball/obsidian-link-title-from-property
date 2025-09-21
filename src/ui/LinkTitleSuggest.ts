@@ -144,11 +144,72 @@ export class LinkTitleSuggest extends EditorSuggest<SuggestionItem> {
 
   renderSuggestion(suggestion: SuggestionItem, el: HTMLElement): void {
     el.empty();
-    const content = el.createDiv({ cls: 'suggestion-content' });
-    content.createDiv({ cls: 'suggestion-title', text: suggestion.display });
+    
     if (suggestion.file) {
-      content.createDiv({ cls: 'suggestion-note', text: suggestion.file.path.replace('.md', '') });
+      // Check what type of result this is
+      const isUsingCustomProperty = this.isUsingCustomProperty(suggestion.file);
+      const isUsingAlias = this.isUsingAlias(suggestion.file);
+      
+      if (isUsingCustomProperty || isUsingAlias) {
+        // Add mod-complex class to match Obsidian's structure
+        el.addClass('mod-complex');
+
+        // Create the main suggestion container
+        const suggestionContent = el.createDiv({ cls: 'suggestion-content' });
+        
+        // Main title
+        const titleEl = suggestionContent.createDiv({ cls: 'suggestion-title' });
+        titleEl.setText(suggestion.display);
+        
+        // File path below
+        const pathEl = suggestionContent.createDiv({ cls: 'suggestion-note' });
+        pathEl.setText(suggestion.file.path.replace('.md', ''));
+        
+        // Add suggestion-aux with appropriate icon
+        const suggestionAux = el.createDiv({ cls: 'suggestion-aux' });
+        const suggestionFlair = suggestionAux.createSpan({ 
+          cls: 'suggestion-flair', 
+          attr: { 'aria-label': isUsingAlias ? 'Alias' : 'Custom Property' } 
+        });
+        
+        if (isUsingAlias) {
+          // Arrow icon for aliases
+          suggestionFlair.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-forward"><polyline points="15 17 20 12 15 7"></polyline><path d="M4 18v-2a4 4 0 0 1 4-4h12"></path></svg>`;
+        } else {
+          // Type icon for custom properties
+          suggestionFlair.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-type"><polyline points="4 7 4 4 20 4 20 7"></polyline><line x1="9" y1="20" x2="15" y2="20"></line><line x1="12" y1="4" x2="12" y2="20"></line></svg>`;
+        }
+      } else {
+        // For normal filename results, show like default Obsidian (no icon)
+        const content = el.createDiv({ cls: 'suggestion-content' });
+        content.createDiv({ cls: 'suggestion-title', text: suggestion.display });
+        content.createDiv({ cls: 'suggestion-note', text: suggestion.file.path.replace('.md', '') });
+      }
+    } else {
+      // For new note suggestions, show without icon
+      const content = el.createDiv({ cls: 'suggestion-content' });
+      content.createDiv({ cls: 'suggestion-title', text: suggestion.display });
     }
+  }
+
+  private isUsingCustomProperty(file: TFile): boolean {
+    const cache = this.app.metadataCache.getFileCache(file);
+    const frontmatter = cache?.frontmatter;
+    const propertyValue = frontmatter?.[this.plugin.settings.propertyKey];
+    return propertyValue !== undefined && propertyValue !== null && String(propertyValue).trim() !== '';
+  }
+
+  private isUsingAlias(file: TFile): boolean {
+    // Check if this file has aliases and if we're currently searching
+    const cache = this.app.metadataCache.getFileCache(file);
+    const frontmatter = cache?.frontmatter;
+    const aliases = frontmatter?.aliases;
+    
+    if (!aliases) return false;
+    
+    // For now, show alias icon if the file has aliases and we're not using a custom property
+    const isUsingCustomProperty = this.isUsingCustomProperty(file);
+    return !isUsingCustomProperty && aliases;
   }
 
   async selectSuggestion(suggestion: SuggestionItem, evt: MouseEvent | KeyboardEvent): Promise<void> {
