@@ -17,7 +17,6 @@ export default class PropertyOverFilenamePlugin extends Plugin {
     
     // Wait a bit for metadata cache to be fully populated
     setTimeout(() => {
-      console.log('Property Over Filename: setTimeout callback called');
       this.updateLinkSuggester();
       this.updateQuickSwitcher();
     }, 1000);
@@ -107,7 +106,6 @@ export default class PropertyOverFilenamePlugin extends Plugin {
       this.originalSwitcherCallback = command.callback;
       command.callback = () => {
         if (this.settings.enableForQuickSwitcher) {
-          console.log('Property Over Filename: Opening custom Quick Switch modal');
           // Close any existing modals first
           const existingModals = document.querySelectorAll('.modal');
           existingModals.forEach(modal => {
@@ -117,7 +115,6 @@ export default class PropertyOverFilenamePlugin extends Plugin {
           });
           new QuickSwitchModal(this.app, this).open();
         } else {
-          console.log('Property Over Filename: Using original Quick Switcher');
           this.originalSwitcherCallback?.();
         }
       };

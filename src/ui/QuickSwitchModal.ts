@@ -97,7 +97,6 @@ export class QuickSwitchModal extends FuzzySuggestModal<QuickSwitchItem['item']>
     }
     
     this.recentFiles = recentFiles;
-    console.log('Property Over Filename: Recent files count:', this.recentFiles.length);
   }
 
   getItems(): QuickSwitchItem['item'][] {
