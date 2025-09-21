@@ -23,7 +23,7 @@ export class SettingTab extends PluginSettingTab {
           .setValue(this.plugin.settings.propertyKey)
           .onChange(async (value) => {
             this.plugin.settings.propertyKey = value.trim() || 'title';
-            await this.plugin.saveSettings();
+            await this.plugin.saveData(this.plugin.settings);
             this.plugin.updateLinkSuggester();
           })
       );
@@ -34,11 +34,11 @@ export class SettingTab extends PluginSettingTab {
       .addToggle((toggle) =>
         toggle
           .setValue(this.plugin.settings.enableForLinking)
-          .onChange(async (value) => {
-            this.plugin.settings.enableForLinking = value;
-            await this.plugin.saveSettings();
-            this.plugin.updateLinkSuggester();
-          })
+        .onChange(async (value) => {
+          this.plugin.settings.enableForLinking = value;
+          await this.plugin.saveData(this.plugin.settings);
+          this.plugin.updateLinkSuggester();
+        })
       );
 
     new Setting(containerEl)
@@ -48,8 +48,9 @@ export class SettingTab extends PluginSettingTab {
         toggle
           .setValue(this.plugin.settings.enableForQuickSwitcher)
           .onChange(async (value) => {
+            const prevQuickSwitcherState = this.plugin.settings.enableForQuickSwitcher;
             this.plugin.settings.enableForQuickSwitcher = value;
-            await this.plugin.saveSettings();
+            await this.plugin.saveSettings(prevQuickSwitcherState);
           })
       );
 
@@ -61,7 +62,7 @@ export class SettingTab extends PluginSettingTab {
           .setValue(this.plugin.settings.includeFilenameInSearch)
           .onChange(async (value) => {
             this.plugin.settings.includeFilenameInSearch = value;
-            await this.plugin.saveSettings(this.plugin.settings.enableForQuickSwitcher);
+            await this.plugin.saveData(this.plugin.settings);
           })
       );
 
@@ -73,7 +74,7 @@ export class SettingTab extends PluginSettingTab {
           .setValue(this.plugin.settings.includeAliasesInSearch)
           .onChange(async (value) => {
             this.plugin.settings.includeAliasesInSearch = value;
-            await this.plugin.saveSettings(this.plugin.settings.enableForQuickSwitcher);
+            await this.plugin.saveData(this.plugin.settings);
           })
       );
 
@@ -85,7 +86,7 @@ export class SettingTab extends PluginSettingTab {
           .setValue(this.plugin.settings.enableForDragDrop)
           .onChange(async (value) => {
             this.plugin.settings.enableForDragDrop = value;
-            await this.plugin.saveSettings(this.plugin.settings.enableForQuickSwitcher);
+            await this.plugin.saveData(this.plugin.settings);
           })
       );
   }

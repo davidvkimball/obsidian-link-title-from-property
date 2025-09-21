@@ -17,6 +17,7 @@ export default class PropertyOverFilenamePlugin extends Plugin {
     
     // Wait a bit for metadata cache to be fully populated
     setTimeout(() => {
+      console.log('Property Over Filename: setTimeout callback called');
       this.updateLinkSuggester();
       this.updateQuickSwitcher();
     }, 1000);
@@ -127,7 +128,7 @@ export default class PropertyOverFilenamePlugin extends Plugin {
       name: 'Toggle property-based linking',
       callback: async () => {
         this.settings.enableForLinking = !this.settings.enableForLinking;
-        await this.saveSettings();
+        await this.saveData(this.settings);
         this.updateLinkSuggester();
         new Notice(`Property-based linking ${this.settings.enableForLinking ? 'enabled' : 'disabled'}`);
       }
@@ -137,8 +138,9 @@ export default class PropertyOverFilenamePlugin extends Plugin {
       id: 'toggle-quick-switcher',
       name: 'Toggle property-based Quick Switcher',
       callback: async () => {
+        const prevState = this.settings.enableForQuickSwitcher;
         this.settings.enableForQuickSwitcher = !this.settings.enableForQuickSwitcher;
-        await this.saveSettings();
+        await this.saveSettings(prevState);
         new Notice(`Property-based Quick Switcher ${this.settings.enableForQuickSwitcher ? 'enabled' : 'disabled'}`);
       }
     });
@@ -157,12 +159,15 @@ export default class PropertyOverFilenamePlugin extends Plugin {
       name: 'Toggle property-based drag and drop',
       callback: async () => {
         this.settings.enableForDragDrop = !this.settings.enableForDragDrop;
-        await this.saveSettings();
+        await this.saveData(this.settings);
         new Notice(`Property-based drag and drop ${this.settings.enableForDragDrop ? 'enabled' : 'disabled'}`);
       }
     });
 
-    this.addSettingTab(new SettingTab(this.app, this));
+    // Add setting tab after setTimeout to avoid triggering onChange during startup
+    setTimeout(() => {
+      this.addSettingTab(new SettingTab(this.app, this));
+    }, 1500);
   }
 
   private invalidateCache(file: TFile): void {
@@ -366,7 +371,9 @@ export default class PropertyOverFilenamePlugin extends Plugin {
 
   async saveSettings(prevQuickSwitcherState?: boolean) {
     await this.saveData(this.settings);
-    this.updateLinkSuggester();
-    this.updateQuickSwitcher();
+    // Only update components when relevant settings change
+    if (prevQuickSwitcherState !== undefined && prevQuickSwitcherState !== this.settings.enableForQuickSwitcher) {
+      this.updateQuickSwitcher();
+    }
   }
 }
