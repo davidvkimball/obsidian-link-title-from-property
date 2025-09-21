@@ -11,11 +11,12 @@ export class QuickSwitchModal extends FuzzySuggestModal<QuickSwitchItem['item']>
   constructor(app: App, plugin: any) {
     super(app);
     this.plugin = plugin;
-    this.limit = 100;
+    this.limit = 200; // Increased to show more items like default
     this.setPlaceholder('Type to search notes by title or filename...');
     this.buildFileCache();
     this.updateRecentFiles();
     this.addKeyboardNavigation();
+    this.addFooter();
   }
 
   private addKeyboardNavigation(): void {
@@ -27,6 +28,40 @@ export class QuickSwitchModal extends FuzzySuggestModal<QuickSwitchItem['item']>
         e.stopPropagation();
       }
     });
+  }
+
+  private addFooter(): void {
+    // Find the .prompt container and add footer inside it
+    const promptContainer = this.containerEl.querySelector('.prompt');
+    if (promptContainer) {
+      const footer = promptContainer.createDiv({ cls: 'prompt-instructions' });
+      footer.innerHTML = `
+        <div class="prompt-instruction">
+          <span class="prompt-instruction-command">↑↓</span>
+          <span>to navigate</span>
+        </div>
+        <div class="prompt-instruction">
+          <span class="prompt-instruction-command">↵</span>
+          <span>to open</span>
+        </div>
+        <div class="prompt-instruction">
+          <span class="prompt-instruction-command">ctrl ↵</span>
+          <span>to open in new tab</span>
+        </div>
+        <div class="prompt-instruction">
+          <span class="prompt-instruction-command">ctrl alt ↵</span>
+          <span>to open to the right</span>
+        </div>
+        <div class="prompt-instruction">
+          <span class="prompt-instruction-command">shift ↵</span>
+          <span>to create</span>
+        </div>
+        <div class="prompt-instruction">
+          <span class="prompt-instruction-command">esc</span>
+          <span>to dismiss</span>
+        </div>
+      `;
+    }
   }
 
   buildFileCache(): void {
@@ -88,7 +123,7 @@ export class QuickSwitchModal extends FuzzySuggestModal<QuickSwitchItem['item']>
       return `Create new note: ${item.newName}`;
     }
     const display = this.getDisplayName(item);
-    return display + (this.plugin.settings.includeFilenameInSearch && display !== item.basename ? ` (${item.basename})` : '');
+    return display;
   }
 
   getDisplayName(file: TFile): string {
@@ -172,10 +207,10 @@ export class QuickSwitchModal extends FuzzySuggestModal<QuickSwitchItem['item']>
         )
       );
 
-      // Add new note option if no exact match
-      if (!hasExact) {
+      // Only add new note option if no results at all
+      if (results.length === 0) {
         const newItem = { isNewNote: true, newName: searchQuery };
-        results.unshift({
+        results.push({
           item: newItem,
           match: { score: 1000, matches: [[0, searchQuery.length]] },
         });
@@ -192,19 +227,33 @@ export class QuickSwitchModal extends FuzzySuggestModal<QuickSwitchItem['item']>
   renderSuggestion(suggestion: FuzzyMatch<QuickSwitchItem['item']>, el: HTMLElement): void {
     const { item } = suggestion;
     const text = this.getItemText(item);
-    const content = el.createDiv({ cls: 'suggestion-content' });
-
+    
     if ('isNewNote' in item) {
-      content.setText(text);
+      // For new notes, just show the text without arrow
+      el.setText(text);
       return;
     }
 
-    // Simple text display without complex highlighting
-    content.setText(text);
+    // Add mod-complex class to match Obsidian's structure
+    el.addClass('mod-complex');
+
+    // Create the main suggestion container
+    const suggestionContent = el.createDiv({ cls: 'suggestion-content' });
     
+    // Main title
+    const titleEl = suggestionContent.createDiv({ cls: 'suggestion-title' });
+    titleEl.setText(text);
+    
+    // File path below
     if (item instanceof TFile) {
-      content.createDiv({ cls: 'suggestion-note', text: item.path.replace('.md', '') });
+      const pathEl = suggestionContent.createDiv({ cls: 'suggestion-note' });
+      pathEl.setText(item.path.replace('.md', ''));
     }
+    
+    // Add suggestion-aux with proper SVG arrow icon (matching Obsidian's structure)
+    const suggestionAux = el.createDiv({ cls: 'suggestion-aux' });
+    const suggestionFlair = suggestionAux.createSpan({ cls: 'suggestion-flair', attr: { 'aria-label': 'Alias' } });
+    suggestionFlair.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-forward"><polyline points="15 17 20 12 15 7"></polyline><path d="M4 18v-2a4 4 0 0 1 4-4h12"></path></svg>`;
   }
 
   onChooseItem(item: QuickSwitchItem['item'], evt: MouseEvent | KeyboardEvent): void {
@@ -218,7 +267,26 @@ export class QuickSwitchModal extends FuzzySuggestModal<QuickSwitchItem['item']>
           new Notice(`Error creating note: ${err.message}`);
         });
     } else {
-      this.app.workspace.getLeaf().openFile(item);
+      // Handle different modifier keys like default Obsidian
+      if (evt instanceof KeyboardEvent) {
+        if (evt.ctrlKey && evt.altKey) {
+          // Open to the right
+          this.app.workspace.splitActiveLeaf('horizontal');
+          this.app.workspace.getLeaf().openFile(item);
+        } else if (evt.ctrlKey) {
+          // Open in new tab
+          this.app.workspace.getLeaf().openFile(item);
+        } else if (evt.shiftKey) {
+          // Create new note (this shouldn't happen for existing files, but keeping for consistency)
+          this.app.workspace.getLeaf().openFile(item);
+        } else {
+          // Default: open in current tab
+          this.app.workspace.getLeaf().openFile(item);
+        }
+      } else {
+        // Mouse click: default behavior
+        this.app.workspace.getLeaf().openFile(item);
+      }
     }
   }
 }

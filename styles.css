@@ -146,3 +146,92 @@
   outline: 2px solid var(--interactive-accent);
   outline-offset: 2px;
 }
+
+/* Quick Switcher specific styles to match Obsidian's exact structure */
+
+/* Suggestion items with mod-complex class */
+.suggestion-item.mod-complex {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-radius: 4px;
+  transition: background-color 0.1s ease;
+  min-height: 40px;
+}
+
+.suggestion-item.mod-complex .suggestion-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.suggestion-item.mod-complex .suggestion-aux {
+  flex-shrink: 0;
+  margin-left: 8px;
+  display: flex;
+  align-items: center;
+}
+
+.suggestion-item.mod-complex .suggestion-flair {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+
+.suggestion-item.mod-complex .suggestion-flair svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Footer using Obsidian's exact structure */
+.prompt-instructions {
+  border-top: 1px solid var(--background-secondary);
+  user-select: none;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  padding: var(--size-4-2);
+  text-align: center;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--size-4-3);
+}
+
+.prompt-instruction {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.prompt-instruction-command {
+  background-color: var(--background-modifier-border);
+  color: var(--text-normal);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: var(--font-monospace);
+  font-size: 0.8em;
+  font-weight: 500;
+}
+
+/* Remove incorrect modal flex layout */
+
+/* Override any conflicting styles */
+.modal .suggestion-item .suggestion-title {
+  font-weight: 500;
+  color: var(--text-normal);
+  font-size: 0.95em;
+}
+
+.modal .suggestion-item .suggestion-note {
+  font-size: 0.8em;
+  color: var(--text-muted);
+  opacity: 0.8;
+}
