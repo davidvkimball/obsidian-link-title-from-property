@@ -190,8 +190,7 @@ export class QuickSwitchModal extends FuzzySuggestModal<QuickSwitchItem['item']>
   }
 
   renderSuggestion(suggestion: FuzzyMatch<QuickSwitchItem['item']>, el: HTMLElement): void {
-    const { item, match } = suggestion;
-    const query = this.inputEl.value.trim();
+    const { item } = suggestion;
     const text = this.getItemText(item);
     const content = el.createDiv({ cls: 'suggestion-content' });
 
@@ -200,22 +199,9 @@ export class QuickSwitchModal extends FuzzySuggestModal<QuickSwitchItem['item']>
       return;
     }
 
-    if (query && match.matches.length > 0) {
-      let index = 0;
-      const fragment = document.createDocumentFragment();
-      for (const m of match.matches) {
-        fragment.appendText(text.slice(index, m[0]));
-        const highlight = document.createElement('span');
-        highlight.className = 'suggestion-highlight';
-        highlight.appendText(text.slice(m[0], m[1]));
-        fragment.appendChild(highlight);
-        index = m[1];
-      }
-      fragment.appendText(text.slice(index));
-      content.appendChild(fragment);
-    } else {
-      content.setText(text);
-    }
+    // Simple text display without complex highlighting
+    content.setText(text);
+    
     if (item instanceof TFile) {
       content.createDiv({ cls: 'suggestion-note', text: item.path.replace('.md', '') });
     }

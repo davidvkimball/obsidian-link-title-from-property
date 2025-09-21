@@ -9,6 +9,7 @@ export default class PropertyOverFilenamePlugin extends Plugin {
   settings: PluginSettings;
   suggest?: LinkTitleSuggest;
   originalSwitcherCallback?: () => void;
+  private originalQuickSwitcher?: () => void;
   private lastDropTarget?: HTMLElement;
 
   async onload() {
@@ -64,16 +65,20 @@ export default class PropertyOverFilenamePlugin extends Plugin {
     // Register drag and drop event handling
     this.registerEvent(
       this.app.workspace.on('editor-drop', (event, editor) => {
+        console.log('Property Over Filename: editor-drop event triggered');
+        console.log('enableForDragDrop setting:', this.settings.enableForDragDrop);
         if (this.settings.enableForDragDrop) {
           this.handleDragDrop(event, editor);
         }
       })
     );
 
-    // Register DOM event listeners for drag and drop
+    // Also try DOM events as backup
     this.registerDomEvent(document, 'drop', (event) => {
+      console.log('Property Over Filename: DOM drop event triggered');
+      console.log('enableForDragDrop setting:', this.settings.enableForDragDrop);
       if (this.settings.enableForDragDrop) {
-        this.handleDOMDragDrop(event);
+        this.handleDOMDrop(event);
       }
     });
 
@@ -98,6 +103,28 @@ export default class PropertyOverFilenamePlugin extends Plugin {
         new QuickSwitchModal(this.app, this).open();
       }
     });
+
+    // Simply override the original Quick Switcher command
+    const command = (this.app as unknown as AppInternal).commands.commands['switcher:open'];
+    if (command) {
+      this.originalSwitcherCallback = command.callback;
+      command.callback = () => {
+        if (this.settings.enableForQuickSwitcher) {
+          console.log('Property Over Filename: Opening custom Quick Switch modal');
+          // Close any existing modals first
+          const existingModals = document.querySelectorAll('.modal');
+          existingModals.forEach(modal => {
+            if (modal instanceof HTMLElement && modal.style.display !== 'none') {
+              modal.style.display = 'none';
+            }
+          });
+          new QuickSwitchModal(this.app, this).open();
+        } else {
+          console.log('Property Over Filename: Using original Quick Switcher');
+          this.originalSwitcherCallback?.();
+        }
+      };
+    }
 
     this.addCommand({
       id: 'toggle-linking',
@@ -154,14 +181,22 @@ export default class PropertyOverFilenamePlugin extends Plugin {
   }
 
   private handleDragDrop(event: DragEvent, editor: any): void {
+    console.log('Property Over Filename: handleDragDrop called');
+    console.log('Property Over Filename: event.dataTransfer:', event.dataTransfer);
+    console.log('Property Over Filename: files.length:', event.dataTransfer?.files.length);
+    
     // Check if the drag event contains file data
     if (!event.dataTransfer || !event.dataTransfer.files.length) {
+      console.log('Property Over Filename: No dataTransfer or files');
       return;
     }
 
     // Get the file path from the drag event
     const filePath = event.dataTransfer.getData('text/plain');
+    console.log('Property Over Filename: filePath from drag:', filePath);
+    
     if (!filePath || !filePath.endsWith('.md')) {
+      console.log('Property Over Filename: Invalid file path or not .md file');
       return;
     }
 
@@ -171,176 +206,160 @@ export default class PropertyOverFilenamePlugin extends Plugin {
       return;
     }
 
-    // Get the display name from our cache or build it
-    let displayName = file.basename;
+    // Get the display name from frontmatter
+    const fileCache = this.app.metadataCache.getFileCache(file);
+    const frontmatter = fileCache?.frontmatter;
+    let displayName = file.basename; // Default to filename
     
-    if (this.suggest) {
-      const cachedData = (this.suggest as any).fileCache.get(file.path);
-      if (cachedData) {
-        displayName = cachedData.displayName;
-      } else {
-        // Fallback: get display name directly from metadata
-        const fileCache = this.app.metadataCache.getFileCache(file);
-        const frontmatter = fileCache?.frontmatter;
-        if (frontmatter && frontmatter[this.settings.propertyKey] !== undefined && frontmatter[this.settings.propertyKey] !== null) {
-          const propertyValue = String(frontmatter[this.settings.propertyKey]).trim();
-          if (propertyValue !== '') {
-            displayName = propertyValue;
-          }
-        }
+    if (frontmatter && frontmatter[this.settings.propertyKey] !== undefined && frontmatter[this.settings.propertyKey] !== null) {
+      const propertyValue = String(frontmatter[this.settings.propertyKey]).trim();
+      if (propertyValue !== '') {
+        displayName = propertyValue; // Use frontmatter title
       }
     }
 
-    // Prevent default behavior
-    event.preventDefault();
-    event.stopPropagation();
-
-    // Get cursor position
-    const cursor = editor.getCursor();
-    
-    // Create the link text
-    const useMarkdownLinks = (this.app.vault as any).getConfig('useMarkdownLinks') ?? false;
-    let linkText: string;
-    
-    if (useMarkdownLinks) {
-      linkText = `[${displayName}](${encodeURI(file.path)})`;
-    } else {
-      linkText = `[[${file.basename}|${displayName}]]`;
-    }
-
-    // Insert the link at cursor position
-    editor.replaceRange(linkText, cursor, cursor);
-    
-    // Move cursor to end of inserted text
-    const newCursorPos = { line: cursor.line, ch: cursor.ch + linkText.length };
-    editor.setCursor(newCursorPos);
+    // Don't prevent default - let Obsidian insert the default link first
+    // Then we'll replace it with our custom display text
+    setTimeout(() => {
+      this.replaceLastInsertedLink(file, displayName, editor);
+    }, 50);
   }
 
-  private handleDOMDragDrop(event: DragEvent): void {
+  private handleDOMDrop(event: DragEvent): void {
+    console.log('Property Over Filename: handleDOMDrop called');
+    
     // Check if we're dropping on an editor
     const target = event.target as HTMLElement;
+    console.log('Property Over Filename: target:', target);
+    console.log('Property Over Filename: closest .cm-editor:', target?.closest('.cm-editor'));
+    
     if (!target || !target.closest('.cm-editor')) {
+      console.log('Property Over Filename: Not dropping on editor');
       return;
     }
 
     // Get the file path from the drag event
     const filePath = event.dataTransfer?.getData('text/plain');
+    console.log('Property Over Filename: filePath from DOM drag:', filePath);
+    
     if (!filePath) {
+      console.log('Property Over Filename: No file path in DOM drop');
       return;
     }
 
-    // Only handle if we can process this file
-    if (!filePath.startsWith('obsidian://open?') && !filePath.endsWith('.md')) {
-      return;
-    }
-
-    // Don't prevent default - let Obsidian insert the link first, then we'll replace it
-
-    // Parse Obsidian URI format: obsidian://open?vault=VAULT_NAME&file=FILE_PATH
-    let actualFilePath: string;
+    // Parse Obsidian URL format: obsidian://open?vault=...&file=...
+    let actualFilePath = filePath;
     if (filePath.startsWith('obsidian://open?')) {
       const url = new URL(filePath);
       const fileParam = url.searchParams.get('file');
       if (fileParam) {
         actualFilePath = decodeURIComponent(fileParam) + '.md';
+        console.log('Property Over Filename: Parsed file path:', actualFilePath);
       } else {
+        console.log('Property Over Filename: No file parameter in Obsidian URL');
         return;
       }
-    } else if (filePath.endsWith('.md')) {
-      actualFilePath = filePath;
-    } else {
+    } else if (!filePath.endsWith('.md')) {
+      console.log('Property Over Filename: Invalid file path or not .md file in DOM drop');
       return;
     }
 
     // Find the file in the vault
     const file = this.app.vault.getAbstractFileByPath(actualFilePath);
+    console.log('Property Over Filename: found file:', file?.name);
+    
     if (!file || !(file instanceof TFile)) {
+      console.log('Property Over Filename: File not found or not TFile');
       return;
     }
 
-    // Get the display name from our cache or build it
-    let displayName = file.basename;
+    // Get the display name from frontmatter
+    const fileCache = this.app.metadataCache.getFileCache(file);
+    const frontmatter = fileCache?.frontmatter;
+    let displayName = file.basename; // Default to filename
     
-    if (this.suggest) {
-      const cachedData = (this.suggest as any).fileCache.get(file.path);
-      if (cachedData) {
-        displayName = cachedData.displayName;
-      } else {
-        // Fallback: get display name directly from metadata
-        const fileCache = this.app.metadataCache.getFileCache(file);
-        const frontmatter = fileCache?.frontmatter;
-        if (frontmatter && frontmatter[this.settings.propertyKey] !== undefined && frontmatter[this.settings.propertyKey] !== null) {
-          const propertyValue = String(frontmatter[this.settings.propertyKey]).trim();
-          if (propertyValue !== '') {
-            displayName = propertyValue;
-          }
-        }
+    console.log('Property Over Filename: frontmatter:', frontmatter);
+    console.log('Property Over Filename: propertyKey:', this.settings.propertyKey);
+    
+    if (frontmatter && frontmatter[this.settings.propertyKey] !== undefined && frontmatter[this.settings.propertyKey] !== null) {
+      const propertyValue = String(frontmatter[this.settings.propertyKey]).trim();
+      console.log('Property Over Filename: propertyValue:', propertyValue);
+      if (propertyValue !== '') {
+        displayName = propertyValue; // Use frontmatter title
       }
     }
 
-    // Use setTimeout to allow Obsidian to insert the default link first, then replace it
+    console.log('Property Over Filename: final displayName:', displayName);
+
+    // Don't prevent default - let Obsidian insert the default link first
+    // Then we'll replace it with our custom display text
     setTimeout(() => {
-      this.replaceLastInsertedLink(file, displayName);
-    }, 100);
+      console.log('Property Over Filename: Calling replaceLastInsertedLink from DOM drop');
+      const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+      if (activeView && activeView.editor) {
+        this.replaceLastInsertedLink(file, displayName, activeView.editor);
+      }
+    }, 50);
   }
 
-  private replaceLastInsertedLink(file: TFile, displayName: string): void {
-    // Try to find the active editor
-    const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
-    if (!activeView || !activeView.editor) {
+  private replaceLastInsertedLink(file: TFile, displayName: string, editor: any): void {
+    const content = editor.getValue();
+    const cursor = editor.getCursor();
+    
+    console.log('Property Over Filename: Looking for link to replace');
+    console.log('Current line:', content.split('\n')[cursor.line]);
+    console.log('File path:', file.path);
+    console.log('Display name:', displayName);
+    
+    // Look for the most recently inserted link near the cursor
+    const lines = content.split('\n');
+    const currentLine = lines[cursor.line];
+    
+    // Find wiki links or markdown links on the current line
+    const wikiLinkRegex = /\[\[([^\]]+)\]\]/g;
+    const markdownLinkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+    
+    let match;
+    let lastMatch = null;
+    
+    // Find the last wiki link on the current line
+    while ((match = wikiLinkRegex.exec(currentLine)) !== null) {
+      console.log('Found wiki link:', match[0], 'at index:', match.index);
+      lastMatch = match;
+    }
+    
+    if (lastMatch) {
+      const linkPath = lastMatch[1];
+      const newLinkText = `[[${linkPath}|${displayName}]]`;
+      console.log('Replacing wiki link with:', newLinkText);
+      const startPos = { line: cursor.line, ch: lastMatch.index };
+      const endPos = { line: cursor.line, ch: lastMatch.index + lastMatch[0].length };
+      editor.replaceRange(newLinkText, startPos, endPos);
       return;
     }
-
-    const editor = activeView.editor;
-    const content = editor.getValue();
     
-    // Create the new link text
-    const useMarkdownLinks = (this.app.vault as any).getConfig('useMarkdownLinks') ?? false;
-    let newLinkText: string;
+    // Reset regex for markdown links
+    markdownLinkRegex.lastIndex = 0;
     
-    if (useMarkdownLinks) {
-      newLinkText = `[${displayName}](${encodeURI(file.path)})`;
-    } else {
-      newLinkText = `[[${file.basename}|${displayName}]]`;
+    // Find the last markdown link on the current line
+    while ((match = markdownLinkRegex.exec(currentLine)) !== null) {
+      console.log('Found markdown link:', match[0], 'at index:', match.index);
+      lastMatch = match;
     }
     
-    // Look for the default link that was just inserted
-    // Obsidian can insert links in different formats based on settings:
-    // - "Shortest path when possible": [[filename]] or [[folder/filename]]
-    // - "Relative path to file": [[folder/filename]] 
-    // - "Absolute path in vault": [[/folder/filename]]
-    const escapedBasename = file.basename.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const escapedPath = file.path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const escapedPathNoExt = file.path.replace('.md', '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    
-    const defaultLinkPattern = useMarkdownLinks 
-      ? new RegExp(`\\[${escapedBasename}\\]\\(${escapedPathNoExt}\\)`)
-      : new RegExp(`\\[\\[(?:/)?${escapedPathNoExt}\\]\\]`);
-    
-    const match = content.match(defaultLinkPattern);
-    if (match) {
-      // Find the position of the default link
-      const linkIndex = content.indexOf(match[0]);
-      if (linkIndex !== -1) {
-        // Convert character index to line/column position more accurately
-        const beforeLink = content.substring(0, linkIndex);
-        const lines = beforeLink.split('\n');
-        const startPos = { line: lines.length - 1, ch: lines[lines.length - 1].length };
-        const endPos = { line: lines.length - 1, ch: lines[lines.length - 1].length + match[0].length };
-        
-        // Replace the default link with our custom link
-        editor.replaceRange(newLinkText, startPos, endPos);
-        
-        // Move cursor to end of new link (but don't set cursor if it would be invalid)
-        const newCursorPos = { line: startPos.line, ch: startPos.ch + newLinkText.length };
-        try {
-          editor.setCursor(newCursorPos);
-        } catch (error) {
-          // Cursor position invalid, but link was replaced successfully
-        }
-      }
+    if (lastMatch) {
+      const linkText = lastMatch[1];
+      const linkUrl = lastMatch[2];
+      const newLinkText = `[${displayName}](${linkUrl})`;
+      console.log('Replacing markdown link with:', newLinkText);
+      const startPos = { line: cursor.line, ch: lastMatch.index };
+      const endPos = { line: cursor.line, ch: lastMatch.index + lastMatch[0].length };
+      editor.replaceRange(newLinkText, startPos, endPos);
+    } else {
+      console.log('No link found to replace');
     }
   }
+
 
   updateLinkSuggester() {
     const editorSuggest = (this.app.workspace as WorkspaceInternal).editorSuggest;
@@ -360,24 +379,7 @@ export default class PropertyOverFilenamePlugin extends Plugin {
   }
 
   updateQuickSwitcher() {
-    const command = (this.app as unknown as AppInternal).commands.commands['switcher:open'];
-    if (!command) {
-      console.error('Failed to find switcher:open command');
-      new Notice('Failed to override Quick Switcher. Please ensure the core Quick Switcher is enabled.');
-      return;
-    }
-
-    if (this.originalSwitcherCallback) {
-      command.callback = this.originalSwitcherCallback;
-      this.originalSwitcherCallback = undefined;
-    }
-
-    if (this.settings.enableForQuickSwitcher) {
-      this.originalSwitcherCallback = command.callback;
-      command.callback = () => {
-        new QuickSwitchModal(this.app, this).open();
-      };
-    }
+    // This method is called but we handle the override in onload
   }
 
   onunload() {
@@ -389,6 +391,12 @@ export default class PropertyOverFilenamePlugin extends Plugin {
     const command = (this.app as unknown as AppInternal).commands.commands['switcher:open'];
     if (command && this.originalSwitcherCallback) {
       command.callback = this.originalSwitcherCallback;
+    }
+
+    // Restore original quick switcher method
+    if (this.originalQuickSwitcher) {
+      const workspace = this.app.workspace as any;
+      workspace.openQuickSwitcher = this.originalQuickSwitcher;
     }
   }
 
