@@ -11,7 +11,7 @@ export class QuickSwitchModal extends FuzzySuggestModal<QuickSwitchItem['item']>
   constructor(app: App, plugin: any) {
     super(app);
     this.plugin = plugin;
-    this.limit = 200; // Increased to show more items like default
+    this.limit = 10; // Match Obsidian's default limit
     this.setPlaceholder('Type to search notes by title or filename...');
     this.buildFileCache();
     this.updateRecentFiles();
@@ -80,23 +80,43 @@ export class QuickSwitchModal extends FuzzySuggestModal<QuickSwitchItem['item']>
   }
 
   private updateRecentFiles(): void {
-    // Get recently opened files from workspace
-    const recentFiles = this.app.workspace.getLeavesOfType('markdown')
-      .map(leaf => leaf.view)
-      .filter((view): view is MarkdownView => view instanceof MarkdownView)
-      .map(view => view.file)
-      .filter((file): file is TFile => file !== null) // Filter out null files
-      .filter((file, index, self) => self.indexOf(file) === index) // Remove duplicates
-      .slice(0, 10); // Limit to 10 recent files
+    // Use Obsidian's internal recent files mechanism for perfect compatibility
+    let recentFiles: TFile[] = [];
     
-    // If we don't have enough recent files, add some random files to fill up to 10
-    if (recentFiles.length < 10) {
-      const allFiles = this.app.vault.getMarkdownFiles();
-      const remainingSlots = 10 - recentFiles.length;
-      const additionalFiles = allFiles
-        .filter(file => !recentFiles.includes(file))
-        .slice(0, remainingSlots);
-      recentFiles.push(...additionalFiles);
+    const workspace = this.app.workspace as any;
+    
+    // Access Obsidian's recentFileTracker to get the same files as default quick switcher
+    if (workspace.recentFileTracker?.getLastOpenFiles) {
+      const lastOpenFiles = workspace.recentFileTracker.getLastOpenFiles();
+      
+      // Convert file paths to TFile objects
+      recentFiles = lastOpenFiles
+        .map((filePath: string) => this.app.vault.getAbstractFileByPath(filePath))
+        .filter((file: any): file is TFile => file instanceof TFile)
+        .slice(0, 10);
+    }
+    
+    // Fallback if recentFileTracker is not available
+    if (recentFiles.length === 0) {
+      const openFiles = this.app.workspace.getLeavesOfType('markdown')
+        .map(leaf => leaf.view)
+        .filter((view): view is MarkdownView => view instanceof MarkdownView)
+        .map(view => view.file)
+        .filter((file): file is TFile => file !== null)
+        .filter((file, index, self) => self.indexOf(file) === index);
+      
+      recentFiles = [...openFiles];
+      
+      if (recentFiles.length < 10) {
+        const allFiles = this.app.vault.getMarkdownFiles();
+        const remainingSlots = 10 - recentFiles.length;
+        const additionalFiles = allFiles
+          .filter(file => !recentFiles.includes(file))
+          .slice(0, remainingSlots);
+        recentFiles.push(...additionalFiles);
+      }
+      
+      recentFiles = recentFiles.slice(0, 10);
     }
     
     this.recentFiles = recentFiles;
@@ -150,27 +170,11 @@ export class QuickSwitchModal extends FuzzySuggestModal<QuickSwitchItem['item']>
   private getRecentFilesResults(): FuzzyMatch<QuickSwitchItem['item']>[] {
     this.updateRecentFiles();
     
-    // Start with recent files
-    let results = this.recentFiles.map(file => ({
+    // Only show recent files, exactly like Obsidian's default
+    return this.recentFiles.map(file => ({
       item: file,
       match: { score: 1000, matches: [] }
     }));
-    
-    // Add files with aliases if the setting is enabled
-    if (this.plugin.settings.includeAliasesInSearch) {
-      const filesWithAliases = Array.from(this.fileCache.values())
-        .filter(cached => cached.aliases.length > 0)
-        .map(cached => cached.file)
-        .filter(file => !this.recentFiles.includes(file)) // Don't duplicate recent files
-        .slice(0, 5); // Limit to 5 additional files
-      
-      results = results.concat(filesWithAliases.map(file => ({
-        item: file,
-        match: { score: 900, matches: [] } // Slightly lower score than recent files
-      })));
-    }
-    
-    return results;
   }
 
   private performSearch(searchQuery: string): FuzzyMatch<QuickSwitchItem['item']>[] {
@@ -358,3 +362,4 @@ export class QuickSwitchModal extends FuzzySuggestModal<QuickSwitchItem['item']>
     }
   }
 }
+
