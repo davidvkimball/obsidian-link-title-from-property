@@ -17,6 +17,12 @@ export interface CachedFileData {
   isCustomDisplay: boolean;
 }
 
+export interface SearchMatchReason {
+  matchedInTitle: boolean;
+  matchedInFilename: boolean;
+  matchedInAlias: boolean;
+}
+
 export interface SuggestionItem {
   file?: TFile;
   display: string;

@@ -1,5 +1,5 @@
 import { App, FuzzySuggestModal, MarkdownView, Notice, TFile, prepareFuzzySearch, FuzzyMatch } from 'obsidian';
-import { PluginSettings, QuickSwitchItem, CachedFileData } from '../types';
+import { PluginSettings, QuickSwitchItem, CachedFileData, SearchMatchReason } from '../types';
 import { fuzzyMatch, buildFileCache } from '../utils/search';
 
 export class QuickSwitchModal extends FuzzySuggestModal<QuickSwitchItem['item']> {
@@ -7,6 +7,7 @@ export class QuickSwitchModal extends FuzzySuggestModal<QuickSwitchItem['item']>
   private fileCache: Map<string, CachedFileData> = new Map();
   private recentFiles: TFile[] = [];
   private searchTimeout: number | null = null;
+  private matchReasons: Map<string, SearchMatchReason> = new Map();
 
   constructor(app: App, plugin: any) {
     super(app);
@@ -180,6 +181,7 @@ export class QuickSwitchModal extends FuzzySuggestModal<QuickSwitchItem['item']>
   private performSearch(searchQuery: string): FuzzyMatch<QuickSwitchItem['item']>[] {
     const search = prepareFuzzySearch(searchQuery);
     const results: FuzzyMatch<QuickSwitchItem['item']>[] = [];
+    this.matchReasons.clear(); // Clear previous match reasons
 
     // Use cached data for much faster search
     for (const cachedData of this.fileCache.values()) {
@@ -187,15 +189,38 @@ export class QuickSwitchModal extends FuzzySuggestModal<QuickSwitchItem['item']>
       const text = this.getItemText(file);
       const match = search(text) ?? { score: 0, matches: [] };
       
+      // Track which fields caused the match
+      const matchReason: SearchMatchReason = {
+        matchedInTitle: false,
+        matchedInFilename: false,
+        matchedInAlias: false
+      };
+      
+      // Check if title/property match
+      if (match.matches.length > 0) {
+        matchReason.matchedInTitle = true;
+      }
+      
+      // Check if filename match (only if different from title)
+      if (this.plugin.settings.includeFilenameInSearch && 
+          file.basename !== displayName && 
+          fuzzyMatch(file.basename, searchQuery)) {
+        matchReason.matchedInFilename = true;
+      }
+      
+      // Check if alias match
       let aliasMatch = false;
       if (this.plugin.settings.includeAliasesInSearch && aliases.length > 0) {
         aliasMatch = aliases.some(alias => fuzzyMatch(alias, searchQuery));
+        if (aliasMatch) {
+          matchReason.matchedInAlias = true;
+        }
       }
       
-      if (aliasMatch && match.matches.length === 0) {
-        results.push({ item: file, match: { score: -0.1, matches: [[0, searchQuery.length]] } });
-      } else if (match.matches.length > 0) {
-        results.push({ item: file, match });
+      // If we have any match, add to results
+      if (match.matches.length > 0 || aliasMatch) {
+        results.push({ item: file, match: match.matches.length > 0 ? match : { score: -0.1, matches: [[0, searchQuery.length]] } });
+        this.matchReasons.set(file.path, matchReason);
       }
     }
 
@@ -263,11 +288,11 @@ export class QuickSwitchModal extends FuzzySuggestModal<QuickSwitchItem['item']>
       return;
     }
 
-    // Check what type of result this is
-    const isUsingCustomProperty = this.isUsingCustomProperty(item);
-    const isUsingAlias = this.isUsingAlias(item);
+    // Get the match reason for this file
+    const matchReason = this.matchReasons.get(item.path);
+    const shouldShowIcon = matchReason && (matchReason.matchedInTitle || matchReason.matchedInFilename || matchReason.matchedInAlias);
     
-    if (isUsingCustomProperty || isUsingAlias) {
+    if (shouldShowIcon) {
       // Add mod-complex class to match Obsidian's structure
       el.addClass('mod-complex');
 
@@ -284,19 +309,23 @@ export class QuickSwitchModal extends FuzzySuggestModal<QuickSwitchItem['item']>
         pathEl.setText(item.path.replace('.md', ''));
       }
       
-      // Add suggestion-aux with appropriate icon
+      // Add suggestion-aux with appropriate icon based on match reason
       const suggestionAux = el.createDiv({ cls: 'suggestion-aux' });
       const suggestionFlair = suggestionAux.createSpan({ 
         cls: 'suggestion-flair', 
-        attr: { 'aria-label': isUsingAlias ? 'Alias' : 'Custom Property' } 
+        attr: { 'aria-label': this.getIconLabel(matchReason) } 
       });
       
-      if (isUsingAlias) {
-        // Arrow icon for aliases
-        suggestionFlair.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-forward"><polyline points="15 17 20 12 15 7"></polyline><path d="M4 18v-2a4 4 0 0 1 4-4h12"></path></svg>`;
-      } else {
-        // Type icon for custom properties
+      // Determine icon based on priority: title > filename > alias
+      if (matchReason.matchedInTitle) {
+        // Type icon for title/property matches
         suggestionFlair.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-type"><polyline points="4 7 4 4 20 4 20 7"></polyline><line x1="9" y1="20" x2="15" y2="20"></line><line x1="12" y1="4" x2="12" y2="20"></line></svg>`;
+      } else if (matchReason.matchedInFilename) {
+        // File icon for filename matches
+        suggestionFlair.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-file-text"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path><polyline points="14,2 14,8 20,8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10,9 9,9 8,9"></polyline></svg>`;
+      } else if (matchReason.matchedInAlias) {
+        // Arrow icon for alias matches
+        suggestionFlair.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-forward"><polyline points="15 17 20 12 15 7"></polyline><path d="M4 18v-2a4 4 0 0 1 4-4h12"></path></svg>`;
       }
     } else {
       // For normal filename/folder results, show like default Obsidian with full path (no icon)
@@ -306,6 +335,17 @@ export class QuickSwitchModal extends FuzzySuggestModal<QuickSwitchItem['item']>
         el.setText(text);
       }
     }
+  }
+
+  private getIconLabel(matchReason: SearchMatchReason): string {
+    if (matchReason.matchedInTitle) {
+      return 'Title/Property Match';
+    } else if (matchReason.matchedInFilename) {
+      return 'Filename Match';
+    } else if (matchReason.matchedInAlias) {
+      return 'Alias Match';
+    }
+    return 'Match';
   }
 
   private isUsingCustomProperty(file: TFile): boolean {
