@@ -128,6 +128,7 @@ export default class PropertyOverFilenamePlugin extends Plugin {
       callback: async () => {
         this.settings.enableForLinking = !this.settings.enableForLinking;
         await this.saveSettings();
+        this.updateLinkSuggester();
         new Notice(`Property-based linking ${this.settings.enableForLinking ? 'enabled' : 'disabled'}`);
       }
     });

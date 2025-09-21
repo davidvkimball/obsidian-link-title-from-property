@@ -23,7 +23,8 @@ export class SettingTab extends PluginSettingTab {
           .setValue(this.plugin.settings.propertyKey)
           .onChange(async (value) => {
             this.plugin.settings.propertyKey = value.trim() || 'title';
-            await this.plugin.saveSettings(this.plugin.settings.enableForQuickSwitcher);
+            await this.plugin.saveSettings();
+            this.plugin.updateLinkSuggester();
           })
       );
 
@@ -35,7 +36,8 @@ export class SettingTab extends PluginSettingTab {
           .setValue(this.plugin.settings.enableForLinking)
           .onChange(async (value) => {
             this.plugin.settings.enableForLinking = value;
-            await this.plugin.saveSettings(this.plugin.settings.enableForQuickSwitcher);
+            await this.plugin.saveSettings();
+            this.plugin.updateLinkSuggester();
           })
       );
 
@@ -46,9 +48,8 @@ export class SettingTab extends PluginSettingTab {
         toggle
           .setValue(this.plugin.settings.enableForQuickSwitcher)
           .onChange(async (value) => {
-            const prevQuickSwitcherState = this.plugin.settings.enableForQuickSwitcher;
             this.plugin.settings.enableForQuickSwitcher = value;
-            await this.plugin.saveSettings(prevQuickSwitcherState);
+            await this.plugin.saveSettings();
           })
       );
 

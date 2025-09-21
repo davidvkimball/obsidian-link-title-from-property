@@ -35,32 +35,7 @@ export class QuickSwitchModal extends FuzzySuggestModal<QuickSwitchItem['item']>
     const promptContainer = this.containerEl.querySelector('.prompt');
     if (promptContainer) {
       const footer = promptContainer.createDiv({ cls: 'prompt-instructions' });
-      footer.innerHTML = `
-        <div class="prompt-instruction">
-          <span class="prompt-instruction-command">↑↓</span>
-          <span>to navigate</span>
-        </div>
-        <div class="prompt-instruction">
-          <span class="prompt-instruction-command">↵</span>
-          <span>to open</span>
-        </div>
-        <div class="prompt-instruction">
-          <span class="prompt-instruction-command">ctrl ↵</span>
-          <span>to open in new tab</span>
-        </div>
-        <div class="prompt-instruction">
-          <span class="prompt-instruction-command">ctrl alt ↵</span>
-          <span>to open to the right</span>
-        </div>
-        <div class="prompt-instruction">
-          <span class="prompt-instruction-command">shift ↵</span>
-          <span>to create</span>
-        </div>
-        <div class="prompt-instruction">
-          <span class="prompt-instruction-command">esc</span>
-          <span>to dismiss</span>
-        </div>
-      `;
+      footer.innerHTML = `<div class="prompt-instruction"><span class="prompt-instruction-command">↑↓</span><span>to navigate</span></div><div class="prompt-instruction"><span class="prompt-instruction-command">↵</span><span>to open</span></div><div class="prompt-instruction"><span class="prompt-instruction-command">ctrl ↵</span><span>to open in new tab</span></div><div class="prompt-instruction"><span class="prompt-instruction-command">ctrl alt ↵</span><span>to open to the right</span></div><div class="prompt-instruction"><span class="prompt-instruction-command">shift ↵</span><span>to create</span></div><div class="prompt-instruction"><span class="prompt-instruction-command">esc</span><span>to dismiss</span></div>`;
     }
   }
 
@@ -111,7 +86,18 @@ export class QuickSwitchModal extends FuzzySuggestModal<QuickSwitchItem['item']>
       .filter((file, index, self) => self.indexOf(file) === index) // Remove duplicates
       .slice(0, 10); // Limit to 10 recent files
     
+    // If we don't have enough recent files, add some random files to fill up to 10
+    if (recentFiles.length < 10) {
+      const allFiles = this.app.vault.getMarkdownFiles();
+      const remainingSlots = 10 - recentFiles.length;
+      const additionalFiles = allFiles
+        .filter(file => !recentFiles.includes(file))
+        .slice(0, remainingSlots);
+      recentFiles.push(...additionalFiles);
+    }
+    
     this.recentFiles = recentFiles;
+    console.log('Property Over Filename: Recent files count:', this.recentFiles.length);
   }
 
   getItems(): QuickSwitchItem['item'][] {
@@ -161,10 +147,28 @@ export class QuickSwitchModal extends FuzzySuggestModal<QuickSwitchItem['item']>
 
   private getRecentFilesResults(): FuzzyMatch<QuickSwitchItem['item']>[] {
     this.updateRecentFiles();
-    return this.recentFiles.map(file => ({
+    
+    // Start with recent files
+    let results = this.recentFiles.map(file => ({
       item: file,
       match: { score: 1000, matches: [] }
     }));
+    
+    // Add files with aliases if the setting is enabled
+    if (this.plugin.settings.includeAliasesInSearch) {
+      const filesWithAliases = Array.from(this.fileCache.values())
+        .filter(cached => cached.aliases.length > 0)
+        .map(cached => cached.file)
+        .filter(file => !this.recentFiles.includes(file)) // Don't duplicate recent files
+        .slice(0, 5); // Limit to 5 additional files
+      
+      results = results.concat(filesWithAliases.map(file => ({
+        item: file,
+        match: { score: 900, matches: [] } // Slightly lower score than recent files
+      })));
+    }
+    
+    return results;
   }
 
   private performSearch(searchQuery: string): FuzzyMatch<QuickSwitchItem['item']>[] {
@@ -234,26 +238,69 @@ export class QuickSwitchModal extends FuzzySuggestModal<QuickSwitchItem['item']>
       return;
     }
 
-    // Add mod-complex class to match Obsidian's structure
-    el.addClass('mod-complex');
+    // Check what type of result this is
+    const isUsingCustomProperty = this.isUsingCustomProperty(item);
+    const isUsingAlias = this.isUsingAlias(item);
+    
+    if (isUsingCustomProperty || isUsingAlias) {
+      // Add mod-complex class to match Obsidian's structure
+      el.addClass('mod-complex');
 
-    // Create the main suggestion container
-    const suggestionContent = el.createDiv({ cls: 'suggestion-content' });
-    
-    // Main title
-    const titleEl = suggestionContent.createDiv({ cls: 'suggestion-title' });
-    titleEl.setText(text);
-    
-    // File path below
-    if (item instanceof TFile) {
-      const pathEl = suggestionContent.createDiv({ cls: 'suggestion-note' });
-      pathEl.setText(item.path.replace('.md', ''));
+      // Create the main suggestion container
+      const suggestionContent = el.createDiv({ cls: 'suggestion-content' });
+      
+      // Main title
+      const titleEl = suggestionContent.createDiv({ cls: 'suggestion-title' });
+      titleEl.setText(text);
+      
+      // File path below
+      if (item instanceof TFile) {
+        const pathEl = suggestionContent.createDiv({ cls: 'suggestion-note' });
+        pathEl.setText(item.path.replace('.md', ''));
+      }
+      
+      // Add suggestion-aux with appropriate icon
+      const suggestionAux = el.createDiv({ cls: 'suggestion-aux' });
+      const suggestionFlair = suggestionAux.createSpan({ 
+        cls: 'suggestion-flair', 
+        attr: { 'aria-label': isUsingAlias ? 'Alias' : 'Custom Property' } 
+      });
+      
+      if (isUsingAlias) {
+        // Arrow icon for aliases
+        suggestionFlair.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-forward"><polyline points="15 17 20 12 15 7"></polyline><path d="M4 18v-2a4 4 0 0 1 4-4h12"></path></svg>`;
+      } else {
+        // Type icon for custom properties
+        suggestionFlair.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-type"><polyline points="4 7 4 4 20 4 20 7"></polyline><line x1="9" y1="20" x2="15" y2="20"></line><line x1="12" y1="4" x2="12" y2="20"></line></svg>`;
+      }
+    } else {
+      // For normal filename/folder results, show like default Obsidian with full path (no icon)
+      if (item instanceof TFile) {
+        el.setText(item.path.replace('.md', ''));
+      } else {
+        el.setText(text);
+      }
     }
+  }
+
+  private isUsingCustomProperty(file: TFile): boolean {
+    const cache = this.app.metadataCache.getFileCache(file);
+    const frontmatter = cache?.frontmatter;
+    const propertyValue = frontmatter?.[this.plugin.settings.propertyKey];
+    return propertyValue !== undefined && propertyValue !== null && String(propertyValue).trim() !== '';
+  }
+
+  private isUsingAlias(file: TFile): boolean {
+    // Check if this file has aliases and if we're currently searching
+    const cache = this.app.metadataCache.getFileCache(file);
+    const frontmatter = cache?.frontmatter;
+    const aliases = frontmatter?.aliases;
     
-    // Add suggestion-aux with proper SVG arrow icon (matching Obsidian's structure)
-    const suggestionAux = el.createDiv({ cls: 'suggestion-aux' });
-    const suggestionFlair = suggestionAux.createSpan({ cls: 'suggestion-flair', attr: { 'aria-label': 'Alias' } });
-    suggestionFlair.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-forward"><polyline points="15 17 20 12 15 7"></polyline><path d="M4 18v-2a4 4 0 0 1 4-4h12"></path></svg>`;
+    if (!aliases) return false;
+    
+    // For now, show alias icon if the file has aliases and we're not using a custom property
+    const isUsingCustomProperty = this.isUsingCustomProperty(file);
+    return !isUsingCustomProperty && aliases;
   }
 
   onChooseItem(item: QuickSwitchItem['item'], evt: MouseEvent | KeyboardEvent): void {

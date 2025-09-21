@@ -49,18 +49,7 @@
   margin-right: 4px;
 }
 
-/* Enhanced prompt instructions */
-.prompt-instructions {
-  padding: 8px 12px;
-  background-color: var(--background-secondary);
-  border-top: 1px solid var(--background-modifier-border);
-  font-size: 0.85em;
-  color: var(--text-muted);
-}
-
-.prompt-instruction {
-  margin: 2px 0;
-}
+/* Remove duplicate prompt instructions - use the ones below */
 
 /* Quick switcher enhancements */
 .modal .suggestion-item {
