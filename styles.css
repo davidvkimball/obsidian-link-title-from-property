@@ -49,6 +49,7 @@
   margin-right: 4px;
 }
 
+
 /* Remove duplicate prompt instructions - use the ones below */
 
 /* Quick switcher enhancements - SCOPED to plugin only */
@@ -121,23 +122,23 @@
   background-color: var(--text-error-hover);
 }
 
-/* Mobile-specific adjustments */
+/* Mobile-specific adjustments - SCOPED to plugin only */
 @media (max-width: 768px) {
-  .suggestion-content {
+  .property-over-filename-suggestion .suggestion-content {
     padding: 4px 0;
   }
   
-  .suggestion-title {
+  .property-over-filename-suggestion .suggestion-title {
     font-size: 0.95em;
   }
   
-  .suggestion-note {
+  .property-over-filename-suggestion .suggestion-note {
     font-size: 0.8em;
   }
 }
 
-/* Dark mode adjustments */
-.theme-dark .suggestion-highlight {
+/* Dark mode adjustments - SCOPED to plugin only */
+.theme-dark .property-over-filename-suggestion .suggestion-highlight {
   background-color: rgba(255, 255, 0, 0.3);
   color: var(--text-normal);
 }

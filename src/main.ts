@@ -8,12 +8,13 @@ import { SettingTab } from './ui/SettingTab';
 export default class PropertyOverFilenamePlugin extends Plugin {
   settings: PluginSettings;
   suggest?: LinkTitleSuggest;
-  originalSwitcherCallback?: () => void;
-  private originalQuickSwitcher?: () => void;
+  private originalSwitcherCommand?: any;
+  private isCommandOverridden: boolean = false;
   private lastDropTarget?: HTMLElement;
 
   async onload() {
     await this.loadSettings();
+    
     
     // Wait a bit for metadata cache to be fully populated
     setTimeout(() => {
@@ -100,25 +101,7 @@ export default class PropertyOverFilenamePlugin extends Plugin {
       }
     });
 
-    // Simply override the original Quick Switcher command
-    const command = (this.app as unknown as AppInternal).commands.commands['switcher:open'];
-    if (command) {
-      this.originalSwitcherCallback = command.callback;
-      command.callback = () => {
-        if (this.settings.enableForQuickSwitcher) {
-          // Close any existing modals first
-          const existingModals = document.querySelectorAll('.modal');
-          existingModals.forEach(modal => {
-            if (modal instanceof HTMLElement && modal.style.display !== 'none') {
-              modal.style.display = 'none';
-            }
-          });
-          new QuickSwitchModal(this.app, this).open();
-        } else {
-          this.originalSwitcherCallback?.();
-        }
-      };
-    }
+    // Don't override the Quick Switcher command here - let updateQuickSwitcher handle it
 
     this.addCommand({
       id: 'toggle-linking',
@@ -161,10 +144,8 @@ export default class PropertyOverFilenamePlugin extends Plugin {
       }
     });
 
-    // Add setting tab after setTimeout to avoid triggering onChange during startup
-    setTimeout(() => {
-      this.addSettingTab(new SettingTab(this.app, this));
-    }, 1500);
+    // Add setting tab immediately
+    this.addSettingTab(new SettingTab(this.app, this));
   }
 
   private invalidateCache(file: TFile): void {
@@ -341,24 +322,183 @@ export default class PropertyOverFilenamePlugin extends Plugin {
   }
 
   updateQuickSwitcher() {
-    // This method is called but we handle the override in onload
+    // Always override the command - our callback will handle the setting
+    if (!this.isCommandOverridden) {
+      this.overrideQuickSwitcherCommand();
+    }
+  }
+
+
+  private overrideQuickSwitcherCommand() {
+    // Get the command registry
+    const commands = (this.app as unknown as AppInternal).commands.commands;
+
+    // Store the original command BEFORE we delete it
+    if (commands['switcher:open'] && !this.originalSwitcherCommand) {
+      const originalCmd = commands['switcher:open'] as any;
+      this.originalSwitcherCommand = {
+        id: originalCmd.id,
+        name: originalCmd.name,
+        icon: originalCmd.icon,
+        hotkeys: originalCmd.hotkeys ? [...originalCmd.hotkeys] : [],
+        callback: originalCmd.callback
+      };
+    }
+
+    // Remove the original command completely to avoid conflicts
+    if (commands['switcher:open']) {
+      delete commands['switcher:open'];
+    }
+
+    // Add our own command with the same ID
+    this.addCommand({
+      id: 'switcher:open',
+      name: 'Quick Switcher',
+      hotkeys: [{ modifiers: ["Mod"], key: "o" }],
+      callback: () => {
+        if (this.settings.enableForQuickSwitcher) {
+          // Use our custom modal when enabled
+          // Close any existing modals first
+          const existingModals = document.querySelectorAll('.modal');
+          existingModals.forEach(modal => {
+            if (modal instanceof HTMLElement && modal.style.display !== 'none') {
+              modal.style.display = 'none';
+            }
+          });
+          new QuickSwitchModal(this.app, this).open();
+        } else {
+          // Use the original Obsidian Quick Switcher when disabled
+          if (this.originalSwitcherCommand && this.originalSwitcherCommand.callback) {
+            this.originalSwitcherCommand.callback();
+          } else {
+            // Fallback: try to open the default switcher
+            (this.app as any).commands.executeCommandById('switcher:open');
+          }
+        }
+      }
+    });
+
+    this.isCommandOverridden = true;
+  }
+
+  private restoreOriginalCommand() {
+    if (!this.originalSwitcherCommand) {
+      return;
+    }
+
+    // Remove our command
+    const commands = (this.app as unknown as AppInternal).commands.commands;
+    if (commands['switcher:open']) {
+      delete commands['switcher:open'];
+    }
+
+    // Restore the original command
+    (commands as any)['switcher:open'] = {
+      id: this.originalSwitcherCommand.id,
+      name: this.originalSwitcherCommand.name,
+      icon: this.originalSwitcherCommand.icon,
+      hotkeys: this.originalSwitcherCommand.hotkeys,
+      callback: this.originalSwitcherCommand.callback
+    };
+
+    this.isCommandOverridden = false;
+  }
+
+  private openDefaultQuickSwitcher() {
+    console.log('=== OPENING DEFAULT QUICK SWITCHER ===');
+    
+    try {
+      // Method 1: Try to access the internal Quick Switcher plugin directly
+      const internalPlugins = (this.app as any).internalPlugins;
+      const quickSwitcherPlugin = internalPlugins?.plugins?.['switcher'];
+      
+      if (quickSwitcherPlugin?.instance) {
+        console.log('Found quick-switcher plugin instance');
+        const instance = quickSwitcherPlugin.instance;
+        
+        // Try to find and use the QuickSwitcherModal class
+        if (instance.QuickSwitcherModal) {
+          console.log('Creating QuickSwitcherModal instance');
+          const QuickSwitcherModal = instance.QuickSwitcherModal;
+          
+          // Try different constructor signatures
+          const signatures = [
+            () => new QuickSwitcherModal(this.app, false),
+            () => new QuickSwitcherModal(this.app, true),
+            () => new QuickSwitcherModal(this.app, false, false),
+            () => new QuickSwitcherModal(this.app, true, false),
+            () => new QuickSwitcherModal(this.app),
+          ];
+          
+          for (let i = 0; i < signatures.length; i++) {
+            try {
+              console.log(`Trying constructor signature ${i + 1}`);
+              const modal = signatures[i]();
+              modal.open();
+              console.log(`QuickSwitcherModal opened successfully with signature ${i + 1}`);
+              return;
+            } catch (error) {
+              console.log(`Constructor signature ${i + 1} failed:`, error.message);
+            }
+          }
+        }
+        
+        // Try other methods on the instance
+        if (typeof instance.openQuickSwitcher === 'function') {
+          console.log('Trying instance.openQuickSwitcher');
+          instance.openQuickSwitcher();
+          return;
+        }
+        
+        if (typeof instance.open === 'function') {
+          console.log('Trying instance.open');
+          instance.open();
+          return;
+        }
+      }
+
+      // Method 2: Use workspace method if available
+      const workspace = this.app.workspace as any;
+      if (typeof workspace.openQuickSwitcher === 'function') {
+        console.log('Using workspace.openQuickSwitcher');
+        workspace.openQuickSwitcher();
+        return;
+      }
+
+      // Method 3: Try to find the QuickSwitcherModal class in the global scope
+      console.log('Trying to find QuickSwitcherModal in global scope');
+      const globalScope = (window as any);
+      if (globalScope.QuickSwitcherModal) {
+        try {
+          const modal = new globalScope.QuickSwitcherModal(this.app, false);
+          modal.open();
+          console.log('Global QuickSwitcherModal opened successfully');
+          return;
+        } catch (error) {
+          console.log('Global QuickSwitcherModal failed:', error.message);
+        }
+      }
+
+      // Method 4: Fallback to command palette
+      console.log('Falling back to command palette');
+      (this.app as any).commands.executeCommandById('app:open-quick-switcher');
+      
+    } catch (error) {
+      console.error('Error opening default Quick Switcher:', error);
+      new Notice('Error opening Quick Switcher. Please check console for details.');
+    }
   }
 
   onunload() {
+    // Clean up editor suggester
     const editorSuggest = (this.app.workspace as WorkspaceInternal).editorSuggest;
     if (editorSuggest && this.suggest) {
       editorSuggest.suggests = editorSuggest.suggests.filter((s: any) => s !== this.suggest);
     }
 
-    const command = (this.app as unknown as AppInternal).commands.commands['switcher:open'];
-    if (command && this.originalSwitcherCallback) {
-      command.callback = this.originalSwitcherCallback;
-    }
-
-    // Restore original quick switcher method
-    if (this.originalQuickSwitcher) {
-      const workspace = this.app.workspace as any;
-      workspace.openQuickSwitcher = this.originalQuickSwitcher;
+    // Restore the original Quick Switcher command
+    if (this.isCommandOverridden) {
+      this.restoreOriginalCommand();
     }
   }
 
@@ -370,6 +510,7 @@ export default class PropertyOverFilenamePlugin extends Plugin {
     await this.saveData(this.settings);
     // Only update components when relevant settings change
     if (prevQuickSwitcherState !== undefined && prevQuickSwitcherState !== this.settings.enableForQuickSwitcher) {
+      console.log('Quick Switcher setting changed, updating command');
       this.updateQuickSwitcher();
     }
   }

@@ -13,14 +13,23 @@ export class QuickSwitchModal extends FuzzySuggestModal<QuickSwitchItem['item']>
     super(app);
     this.plugin = plugin;
     this.limit = 10; // Match Obsidian's default limit
-    this.setPlaceholder('Type to search notes by title or filename...');
+    
+    // Set placeholder based on setting
+    if (this.plugin.settings.enableForQuickSwitcher) {
+      this.setPlaceholder('Type to search notes by title or filename...');
+    } else {
+      this.setPlaceholder('Type to search files...');
+    }
+    
     this.buildFileCache();
     this.updateRecentFiles();
     this.addKeyboardNavigation();
     this.addFooter();
     
-    // Add scoping class to prevent CSS from affecting other modals
-    this.containerEl.addClass('property-over-filename-modal');
+    // Only add scoping class when enabled
+    if (this.plugin.settings.enableForQuickSwitcher) {
+      this.containerEl.addClass('property-over-filename-modal');
+    }
   }
 
   private addKeyboardNavigation(): void {
@@ -129,8 +138,14 @@ export class QuickSwitchModal extends FuzzySuggestModal<QuickSwitchItem['item']>
 
   getItemText(item: QuickSwitchItem['item']): string {
     if ('isNewNote' in item) {
-      return `Create new note: ${item.newName}`;
+      return item.newName; // Just return the name, Obsidian will handle the "Enter to create" text
     }
+    
+    // When disabled, show just the filename like default Obsidian
+    if (!this.plugin.settings.enableForQuickSwitcher) {
+      return item.basename;
+    }
+    
     const display = this.getDisplayName(item);
     return display;
   }
@@ -150,7 +165,37 @@ export class QuickSwitchModal extends FuzzySuggestModal<QuickSwitchItem['item']>
 
   getSuggestions(query: string): FuzzyMatch<QuickSwitchItem['item']>[] {
     if (!this.plugin.settings.enableForQuickSwitcher) {
-      return [];
+      // When disabled, use default Obsidian behavior - show all files with default search
+      const searchQuery = query.trim();
+      
+      if (!searchQuery) {
+        // Show recent files like default Obsidian
+        return this.getRecentFilesResults();
+      }
+      
+      // Use default Obsidian search - just show files with filename matching
+      const files = this.app.vault.getMarkdownFiles();
+      const search = prepareFuzzySearch(searchQuery);
+      const results: FuzzyMatch<QuickSwitchItem['item']>[] = [];
+      
+      for (const file of files) {
+        const match = search(file.basename) ?? { score: 0, matches: [] };
+        if (match.matches.length > 0) {
+          results.push({ item: file, match });
+        }
+      }
+      
+      // Sort by score and then alphabetically
+      results.sort((a, b) => {
+        const scoreDiff = b.match.score - a.match.score;
+        if (scoreDiff !== 0) return scoreDiff;
+        if (a.item instanceof TFile && b.item instanceof TFile) {
+          return a.item.basename.localeCompare(b.item.basename);
+        }
+        return 0;
+      });
+      
+      return results.slice(0, this.limit);
     }
 
     const searchQuery = query.trim();
@@ -264,75 +309,78 @@ export class QuickSwitchModal extends FuzzySuggestModal<QuickSwitchItem['item']>
     const text = this.getItemText(item);
     
     if ('isNewNote' in item) {
-      // For new notes, use the same structure as other items with file-plus icon
+      // For new notes, use the exact HTML structure from default Obsidian
+      el.empty();
       el.addClass('mod-complex');
       
-      // Create the main suggestion container
+      // Main suggestion content
       const suggestionContent = el.createDiv({ cls: 'suggestion-content' });
+      const suggestionTitle = suggestionContent.createDiv({ cls: 'suggestion-title' });
+      suggestionTitle.setText(text);
       
-      // Main title with new note indicator
-      const titleEl = suggestionContent.createDiv({ cls: 'suggestion-title' });
-      titleEl.setText(text);
-      titleEl.setAttr('data-new-note', 'true');
-      
-      // Add suggestion-aux with file-plus icon
+      // Add "Enter to create" text on the right using the correct class
       const suggestionAux = el.createDiv({ cls: 'suggestion-aux' });
-      const suggestionFlair = suggestionAux.createSpan({ 
-        cls: 'suggestion-flair', 
-        attr: { 'aria-label': 'Create new note' } 
-      });
-      
-      // File-plus icon for new notes
-      suggestionFlair.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-file-plus"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path><polyline points="14,2 14,8 20,8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg>`;
+      const suggestionAction = suggestionAux.createSpan({ cls: 'suggestion-action' });
+      suggestionAction.setText('Enter to create');
       
       return;
     }
 
-    // Get the match reason for this file
-    const matchReason = this.matchReasons.get(item.path);
-    const shouldShowIcon = matchReason && (matchReason.matchedInTitle || matchReason.matchedInFilename || matchReason.matchedInAlias);
-    
-    if (shouldShowIcon) {
-      // Add mod-complex class to match Obsidian's structure
-      el.addClass('mod-complex');
-
-      // Create the main suggestion container
-      const suggestionContent = el.createDiv({ cls: 'suggestion-content' });
-      
-      // Main title
-      const titleEl = suggestionContent.createDiv({ cls: 'suggestion-title' });
-      titleEl.setText(text);
-      
-      // File path below
-      if (item instanceof TFile) {
-        const pathEl = suggestionContent.createDiv({ cls: 'suggestion-note' });
-        pathEl.setText(item.path.replace('.md', ''));
-      }
-      
-      // Add suggestion-aux with appropriate icon based on match reason
-      const suggestionAux = el.createDiv({ cls: 'suggestion-aux' });
-      const suggestionFlair = suggestionAux.createSpan({ 
-        cls: 'suggestion-flair', 
-        attr: { 'aria-label': this.getIconLabel(matchReason) } 
-      });
-      
-      // Determine icon based on priority: title > filename > alias
-      if (matchReason.matchedInTitle) {
-        // Type icon for title/property matches
-        suggestionFlair.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-type"><polyline points="4 7 4 4 20 4 20 7"></polyline><line x1="9" y1="20" x2="15" y2="20"></line><line x1="12" y1="4" x2="12" y2="20"></line></svg>`;
-      } else if (matchReason.matchedInFilename) {
-        // File icon for filename matches
-        suggestionFlair.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-file-text"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path><polyline points="14,2 14,8 20,8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10,9 9,9 8,9"></polyline></svg>`;
-      } else if (matchReason.matchedInAlias) {
-        // Arrow icon for alias matches
-        suggestionFlair.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-forward"><polyline points="15 17 20 12 15 7"></polyline><path d="M4 18v-2a4 4 0 0 1 4-4h12"></path></svg>`;
-      }
-    } else {
-      // For normal filename/folder results, show like default Obsidian with full path (no icon)
+    // When disabled, use default Obsidian styling (no custom classes or icons)
+    if (!this.plugin.settings.enableForQuickSwitcher) {
+      // Use default Obsidian single-line display
       if (item instanceof TFile) {
         el.setText(item.path.replace('.md', ''));
       } else {
         el.setText(text);
+      }
+    } else {
+      // When enabled, use our custom styling with icons
+      const matchReason = this.matchReasons.get(item.path);
+      const shouldShowIcon = matchReason && (matchReason.matchedInTitle || matchReason.matchedInFilename || matchReason.matchedInAlias);
+      
+      if (shouldShowIcon) {
+        // Add mod-complex class to match Obsidian's structure
+        el.addClass('mod-complex');
+
+        // Create the main suggestion container
+        const suggestionContent = el.createDiv({ cls: 'suggestion-content' });
+        
+        // Main title
+        const titleEl = suggestionContent.createDiv({ cls: 'suggestion-title' });
+        titleEl.setText(text);
+        
+        // File path below
+        if (item instanceof TFile) {
+          const pathEl = suggestionContent.createDiv({ cls: 'suggestion-note' });
+          pathEl.setText(item.path.replace('.md', ''));
+        }
+        
+        // Add suggestion-aux with appropriate icon based on match reason
+        const suggestionAux = el.createDiv({ cls: 'suggestion-aux' });
+        const suggestionFlair = suggestionAux.createSpan({ 
+          cls: 'suggestion-flair', 
+          attr: { 'aria-label': this.getIconLabel(matchReason) } 
+        });
+        
+        // Determine icon based on priority: title > filename > alias
+        if (matchReason.matchedInTitle) {
+          // Type icon for title/property matches
+          suggestionFlair.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-type"><polyline points="4 7 4 4 20 4 20 7"></polyline><line x1="9" y1="20" x2="15" y2="20"></line><line x1="12" y1="4" x2="12" y2="20"></line></svg>`;
+        } else if (matchReason.matchedInFilename) {
+          // File icon for filename matches
+          suggestionFlair.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-file-text"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path><polyline points="14,2 14,8 20,8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10,9 9,9 8,9"></polyline></svg>`;
+        } else if (matchReason.matchedInAlias) {
+          // Arrow icon for alias matches
+          suggestionFlair.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-forward"><polyline points="15 17 20 12 15 7"></polyline><path d="M4 18v-2a4 4 0 0 1 4-4h12"></path></svg>`;
+        }
+      } else {
+        // For normal filename/folder results, show like default Obsidian with full path (no icon)
+        if (item instanceof TFile) {
+          el.setText(item.path.replace('.md', ''));
+        } else {
+          el.setText(text);
+        }
       }
     }
   }
