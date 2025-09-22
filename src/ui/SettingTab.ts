@@ -1,6 +1,4 @@
-import { App, PluginSettingTab, Setting, Notice } from 'obsidian';
-import { PluginSettings } from '../types';
-import { validateSettings } from '../settings';
+import { App, PluginSettingTab, Setting } from 'obsidian';
 
 export class SettingTab extends PluginSettingTab {
   plugin: any; // PropertyOverFilenamePlugin

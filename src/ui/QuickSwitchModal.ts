@@ -1,5 +1,5 @@
 import { App, FuzzySuggestModal, MarkdownView, Notice, TFile, prepareFuzzySearch, FuzzyMatch } from 'obsidian';
-import { PluginSettings, QuickSwitchItem, CachedFileData, SearchMatchReason } from '../types';
+import { QuickSwitchItem, CachedFileData, SearchMatchReason } from '../types';
 import { fuzzyMatch, buildFileCache } from '../utils/search';
 
 export class QuickSwitchModal extends FuzzySuggestModal<QuickSwitchItem['item']> {
@@ -279,7 +279,7 @@ export class QuickSwitchModal extends FuzzySuggestModal<QuickSwitchItem['item']>
 
       // Check for exact matches
       const lowerQuery = searchQuery.toLowerCase();
-      const hasExact = results.some(r => 
+      results.some(r => 
         r.item instanceof TFile && (
           this.getDisplayName(r.item).toLowerCase() === lowerQuery ||
           (this.plugin.settings.includeFilenameInSearch && r.item.basename.toLowerCase() === lowerQuery) ||

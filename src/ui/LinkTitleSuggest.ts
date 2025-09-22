@@ -1,5 +1,5 @@
 import { Editor, EditorPosition, EditorSuggest, EditorSuggestContext, EditorSuggestTriggerInfo, MarkdownView, Notice, TFile } from 'obsidian';
-import { PluginSettings, SuggestionItem, CachedFileData, EditorSuggestInternal, SearchMatchReason } from '../types';
+import { SuggestionItem, CachedFileData, EditorSuggestInternal, SearchMatchReason } from '../types';
 import { fuzzyMatch, getMatchScore, buildFileCache } from '../utils/search';
 
 export class LinkTitleSuggest extends EditorSuggest<SuggestionItem> {

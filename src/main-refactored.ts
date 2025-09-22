@@ -1,4 +1,4 @@
-import { Platform, Plugin, TFile } from 'obsidian';
+import { Notice, Platform, Plugin, TFile } from 'obsidian';
 import { PluginSettings, WorkspaceInternal } from './types';
 import { DEFAULT_SETTINGS } from './settings';
 import { LinkTitleSuggest } from './ui/LinkTitleSuggest';
@@ -10,11 +10,11 @@ import { DragDropService } from './services/DragDropService';
 import { CacheService } from './services/CacheService';
 
 export default class PropertyOverFilenamePlugin extends Plugin {
-  settings!: PluginSettings;
+  settings: PluginSettings;
   suggest?: LinkTitleSuggest;
-  private quickSwitcherService!: QuickSwitcherService;
-  private dragDropService!: DragDropService;
-  private cacheService!: CacheService;
+  private quickSwitcherService: QuickSwitcherService;
+  private dragDropService: DragDropService;
+  private cacheService: CacheService;
 
   async onload() {
     await this.loadSettings();
