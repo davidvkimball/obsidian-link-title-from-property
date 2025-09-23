@@ -216,6 +216,9 @@ export class QuickSwitchModal extends FuzzySuggestModal<QuickSwitchItem['item']>
   private getRecentFilesResults(): FuzzyMatch<QuickSwitchItem['item']>[] {
     this.updateRecentFiles();
     
+    // Clear match reasons for recent files since they're not search results
+    this.matchReasons.clear();
+    
     // Only show recent files, exactly like Obsidian's default
     return this.recentFiles.map(file => ({
       item: file,
@@ -375,12 +378,37 @@ export class QuickSwitchModal extends FuzzySuggestModal<QuickSwitchItem['item']>
           suggestionFlair.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-forward"><polyline points="15 17 20 12 15 7"></polyline><path d="M4 18v-2a4 4 0 0 1 4-4h12"></path></svg>`;
         }
       } else {
-        // For normal filename/folder results, show like default Obsidian with full path (no icon)
+        // For recent files, use complex layout with appropriate icons
+        // Add mod-complex class to match Obsidian's structure
+        el.addClass('mod-complex');
+
+        // Create the main suggestion container
+        const suggestionContent = el.createDiv({ cls: 'suggestion-content' });
+        
+        // Main title
+        const titleEl = suggestionContent.createDiv({ cls: 'suggestion-title' });
+        titleEl.setText(text);
+        
+        // File path below
         if (item instanceof TFile) {
-          el.setText(item.path.replace('.md', ''));
-        } else {
-          el.setText(text);
+          const pathEl = suggestionContent.createDiv({ cls: 'suggestion-note' });
+          pathEl.setText(item.path.replace('.md', ''));
         }
+        
+        // Add suggestion-aux with appropriate icon
+        const suggestionAux = el.createDiv({ cls: 'suggestion-aux' });
+        const suggestionFlair = suggestionAux.createSpan({ 
+          cls: 'suggestion-flair', 
+          attr: { 'aria-label': 'Property-based title' } 
+        });
+        
+        // Show "T" icon only if we're using a property-based title (not filename)
+        const isUsingProperty = item instanceof TFile && this.getDisplayName(item) !== item.basename;
+        if (isUsingProperty) {
+          // Type icon for property-based titles
+          suggestionFlair.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-type"><polyline points="4 7 4 4 20 4 20 7"></polyline><line x1="9" y1="20" x2="15" y2="20"></line><line x1="12" y1="4" x2="12" y2="20"></line></svg>`;
+        }
+        // No icon for filename-based display
       }
     }
   }

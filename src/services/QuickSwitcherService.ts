@@ -10,9 +10,12 @@ export class QuickSwitcherService {
   }
 
   updateQuickSwitcher() {
-    // Always override the command - our callback will handle the setting
-    if (!this.isCommandOverridden) {
+    // Only override the command if our Quick Switcher is enabled
+    if (this.plugin.settings.enableForQuickSwitcher && !this.isCommandOverridden) {
       this.overrideQuickSwitcherCommand();
+    } else if (!this.plugin.settings.enableForQuickSwitcher && this.isCommandOverridden) {
+      // Restore original command when disabled
+      this.restoreOriginalCommand();
     }
   }
 
@@ -37,35 +40,51 @@ export class QuickSwitcherService {
       delete commands['switcher:open'];
     }
 
-    // Add our own command with the same ID
-    this.plugin.addCommand({
+    // Create our custom command object
+    const customCommand = {
       id: 'switcher:open',
       name: 'Quick Switcher',
+      icon: this.originalSwitcherCommand?.icon,
       hotkeys: [{ modifiers: ["Mod"], key: "o" }],
       callback: () => {
-        if (this.plugin.settings.enableForQuickSwitcher) {
-          // Use our custom modal when enabled
-          // Close any existing modals first
-          const existingModals = document.querySelectorAll('.modal');
-          existingModals.forEach(modal => {
-            if (modal instanceof HTMLElement && modal.style.display !== 'none') {
-              modal.style.display = 'none';
+        // Prevent any default Quick Switcher from opening
+        const workspace = this.plugin.app.workspace as any;
+        if (workspace.switcher) {
+          workspace.switcher.close();
+        }
+        
+        // Use our custom modal when this command is active
+        // Close any existing modals first
+        const existingModals = document.querySelectorAll('.modal');
+        existingModals.forEach(modal => {
+          if (modal instanceof HTMLElement && modal.style.display !== 'none') {
+            modal.style.display = 'none';
+          }
+        });
+        
+        try {
+          import('../ui/QuickSwitchModal').then(({ QuickSwitchModal }) => {
+            const modal = new QuickSwitchModal(this.plugin.app, this.plugin);
+            modal.open();
+          }).catch((error) => {
+            console.error('Error loading QuickSwitchModal:', error);
+            // Fallback to original command if our modal fails
+            if (this.originalSwitcherCommand && this.originalSwitcherCommand.callback) {
+              this.originalSwitcherCommand.callback();
             }
           });
-          import('../ui/QuickSwitchModal').then(({ QuickSwitchModal }) => {
-            new QuickSwitchModal(this.plugin.app, this.plugin).open();
-          });
-        } else {
-          // Use the original Obsidian Quick Switcher when disabled
+        } catch (error) {
+          console.error('Error creating QuickSwitchModal:', error);
+          // Fallback to original command if our modal fails
           if (this.originalSwitcherCommand && this.originalSwitcherCommand.callback) {
             this.originalSwitcherCommand.callback();
-          } else {
-            // Fallback: try to open the default switcher
-            (this.plugin.app as any).commands.executeCommandById('switcher:open');
           }
         }
       }
-    });
+    };
+
+    // Directly assign to the command registry instead of using addCommand
+    commands['switcher:open'] = customCommand;
 
     this.isCommandOverridden = true;
   }

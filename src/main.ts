@@ -152,7 +152,6 @@ export default class PropertyOverFilenamePlugin extends Plugin {
     await this.saveData(this.settings);
     // Only update components when relevant settings change
     if (prevQuickSwitcherState !== undefined && prevQuickSwitcherState !== this.settings.enableForQuickSwitcher) {
-      console.log('Quick Switcher setting changed, updating command');
       this.updateQuickSwitcher();
     }
   }

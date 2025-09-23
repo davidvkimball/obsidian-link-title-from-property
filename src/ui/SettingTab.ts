@@ -43,7 +43,7 @@ export class SettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName('In Quick Switcher')
+      .setName('In quick switcher')
       .setDesc('Enable property-based titles in the quick switcher.')
       .addToggle((toggle) =>
         toggle
