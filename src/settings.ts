@@ -3,7 +3,7 @@ import { PluginSettings } from './types';
 export const DEFAULT_SETTINGS: PluginSettings = {
   propertyKey: 'title',
   enableForLinking: true,
-  enableForQuickSwitcher: false,
+  enableForQuickSwitcher: true,
   includeFilenameInSearch: true,
   includeAliasesInSearch: true,
   enableForDragDrop: true,
