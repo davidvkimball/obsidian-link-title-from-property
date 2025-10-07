@@ -9,7 +9,7 @@ import { QuickSwitcherService } from './services/QuickSwitcherService';
 import { DragDropService } from './services/DragDropService';
 import { CacheService } from './services/CacheService';
 
-export default class PropertyOverFilenamePlugin extends Plugin {
+export default class PropertyOverFileNamePlugin extends Plugin {
   settings!: PluginSettings;
   suggest?: LinkTitleSuggest;
   private quickSwitcherService!: QuickSwitcherService;

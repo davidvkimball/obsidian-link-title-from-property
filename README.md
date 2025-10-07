@@ -18,7 +18,7 @@ Particularly helpful when used in conjunction wth [Astro Composer](https://githu
 - **Link Suggester**: Type `[[` to see suggestions based on the frontmatter `title` (or configured property). Select a note to insert a link (e.g., `[[file name|Title]]` or `[Title](path)` for Markdown links).
 - **Quick Switcher**: Press `Ctrl+O` to search notes by title (or file name/aliases if enabled). Select to open or create a note.
 - **Settings**:
-  - Go to **Settings → Property Over Filename**.
+  - Go to **Settings → Property Over File Name**.
   - **Property key**: Set the frontmatter property for titles (default: `title`).
   - **When linking notes**: Enable/disable property-based titles in link suggester.
   - **In Quick Switcher**: Enable/disable property-based titles in Quick Switcher.

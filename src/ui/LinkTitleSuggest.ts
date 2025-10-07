@@ -3,7 +3,7 @@ import { SuggestionItem, CachedFileData, EditorSuggestInternal, SearchMatchReaso
 import { fuzzyMatch, getMatchScore, buildFileCache } from '../utils/search';
 
 export class LinkTitleSuggest extends EditorSuggest<SuggestionItem> {
-  private plugin: any; // PropertyOverFilenamePlugin
+  private plugin: any; // PropertyOverFileNamePlugin
   private fileCache: Map<string, CachedFileData> = new Map();
   private searchTimeout: number | null = null;
   private matchReasons: Map<string, SearchMatchReason> = new Map();
