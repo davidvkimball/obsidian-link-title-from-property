@@ -56,8 +56,8 @@ export class SettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName('Include filename in fuzzy searches')
-      .setDesc('Include note filenames in fuzzy search results for link suggester and quick switcher.')
+      .setName('Include file name in fuzzy searches')
+      .setDesc('Include note file names in fuzzy search results for link suggester and quick switcher.')
       .addToggle((toggle) =>
         toggle
           .setValue(this.plugin.settings.includeFilenameInSearch)

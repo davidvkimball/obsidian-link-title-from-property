@@ -1,13 +1,11 @@
 {
-	"id": "property-over-filename",
-	"name": "Property Over Filename",
-	"version": "0.4.2",
+	"id": "property-over-file-name",
+	"name": "Property Over File Name",
+	"version": "0.4.3",
 	"minAppVersion": "0.15.0",
-	"description": "Search, display, and insert notes using a specified note property instead of the filename.",
+	"description": "Search, display, and insert notes using a specified note property instead of the file name.",
 	"author": "David V. Kimball",
 	"authorUrl": "https://davidvkimball.com",
 	"fundingUrl": "https://patreon.com/davidvkimball",
-	"isDesktopOnly": false,
-	"tags": ["search", "navigation", "productivity", "frontmatter", "quick-switcher"],
-	"category": "navigation"
+	"isDesktopOnly": false
 }

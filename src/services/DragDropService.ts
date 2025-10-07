@@ -88,7 +88,7 @@ export class DragDropService {
   private getDisplayName(file: TFile): string {
     const fileCache = this.plugin.app.metadataCache.getFileCache(file);
     const frontmatter = fileCache?.frontmatter;
-    let displayName = file.basename; // Default to filename
+    let displayName = file.basename; // Default to file name
     
     if (frontmatter && frontmatter[this.plugin.settings.propertyKey] !== undefined && frontmatter[this.plugin.settings.propertyKey] !== null) {
       const propertyValue = String(frontmatter[this.plugin.settings.propertyKey]).trim();

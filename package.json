@@ -1,7 +1,7 @@
 {
-	"name": "property-over-filename",
-	"version": "0.4.2",
-	"description": "Search, display, and insert notes using a specified note property instead of the filename.",
+	"name": "property-over-file-name",
+	"version": "0.4.3",
+	"description": "Search, display, and insert notes using a specified note property instead of the file name.",
 	"main": "main.js",
 	"scripts": {
 		"dev": "node esbuild.config.mjs",

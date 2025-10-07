@@ -87,18 +87,9 @@ export default class PropertyOverFilenamePlugin extends Plugin {
       }
     });
 
-    // Mobile Quick Switcher override
-    if (Platform.isMobile) {
-      this.registerEvent(
-        this.app.workspace.on('quick-preview', (file: TFile, content: string) => {
-          if (this.settings.enableForQuickSwitcher) {
-            // Prevent default Quick Switcher and open custom modal
-            new QuickSwitchModal(this.app, this).open();
-            return false; // Cancel default behavior
-          }
-        })
-      );
-    }
+    // Note: Mobile quick switcher is handled by the QuickSwitcherService
+    // which overrides the 'switcher:open' command. The quick-preview event
+    // was causing conflicts with normal typing, so we removed that approach.
 
     // Register commands
     registerCommands(this);

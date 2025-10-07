@@ -127,7 +127,7 @@ export class LinkTitleSuggest extends EditorSuggest<SuggestionItem> {
         matchReason.matchedInTitle = true;
       }
       
-      // Check if filename match (only if different from title)
+      // Check if file name match (only if different from title)
       if (this.plugin.settings.includeFilenameInSearch && 
           file.basename !== displayName && 
           fuzzyMatch(file.basename, query)) {
@@ -207,19 +207,19 @@ export class LinkTitleSuggest extends EditorSuggest<SuggestionItem> {
           attr: { 'aria-label': this.getIconLabel(matchReason) } 
         });
         
-        // Determine icon based on priority: title > filename > alias
+        // Determine icon based on priority: title > file name > alias
         if (matchReason.matchedInTitle) {
           // Type icon for title/property matches
           suggestionFlair.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-type"><polyline points="4 7 4 4 20 4 20 7"></polyline><line x1="9" y1="20" x2="15" y2="20"></line><line x1="12" y1="4" x2="12" y2="20"></line></svg>`;
         } else if (matchReason.matchedInFilename) {
-          // File icon for filename matches
+          // File icon for file name matches
           suggestionFlair.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-file-text"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path><polyline points="14,2 14,8 20,8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10,9 9,9 8,9"></polyline></svg>`;
         } else if (matchReason.matchedInAlias) {
           // Arrow icon for alias matches
           suggestionFlair.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-forward"><polyline points="15 17 20 12 15 7"></polyline><path d="M4 18v-2a4 4 0 0 1 4-4h12"></path></svg>`;
         }
       } else {
-        // For normal filename results, show like default Obsidian (no icon)
+        // For normal file name results, show like default Obsidian (no icon)
         const content = el.createDiv({ cls: 'suggestion-content' });
         content.createDiv({ cls: 'suggestion-title', text: suggestion.display });
         content.createDiv({ cls: 'suggestion-note', text: suggestion.file.path.replace('.md', '') });
@@ -231,7 +231,7 @@ export class LinkTitleSuggest extends EditorSuggest<SuggestionItem> {
     if (matchReason.matchedInTitle) {
       return 'Title/Property Match';
     } else if (matchReason.matchedInFilename) {
-      return 'Filename Match';
+      return 'File Name Match';
     } else if (matchReason.matchedInAlias) {
       return 'Alias Match';
     }

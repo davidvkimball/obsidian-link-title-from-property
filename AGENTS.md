@@ -109,7 +109,7 @@ Follow Obsidian's **Developer Policies** and **Plugin Guidelines**. In particula
 - Never execute remote code, fetch and eval scripts, or auto-update plugin code outside of normal releases.
 - Minimize scope: read/write only what's necessary inside the vault. Do not access files outside the vault.
 - Clearly disclose any external services used, data sent, and risks.
-- Respect user privacy. Do not collect vault contents, filenames, or personal information unless absolutely necessary and explicitly consented.
+- Respect user privacy. Do not collect vault contents, file names, or personal information unless absolutely necessary and explicitly consented.
 - Avoid deceptive patterns, ads, or spammy notifications.
 - Register and clean up all DOM, app, and interval listeners using the provided `register*` helpers so the plugin unloads safely.
 
