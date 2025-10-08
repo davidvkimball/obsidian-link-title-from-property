@@ -3,7 +3,7 @@ import { QuickSwitchItem, CachedFileData, SearchMatchReason } from '../types';
 import { fuzzyMatch, buildFileCache } from '../utils/search';
 
 export class QuickSwitchModal extends FuzzySuggestModal<QuickSwitchItem['item']> {
-  private plugin: any; // PropertyOverFileNamePlugin
+  private plugin: any;
   private fileCache: Map<string, CachedFileData> = new Map();
   private recentFiles: TFile[] = [];
   private searchTimeout: number | null = null;
@@ -48,7 +48,21 @@ export class QuickSwitchModal extends FuzzySuggestModal<QuickSwitchItem['item']>
     const promptContainer = this.containerEl.querySelector('.prompt');
     if (promptContainer) {
       const footer = promptContainer.createDiv({ cls: 'prompt-instructions' });
-      footer.innerHTML = `<div class="prompt-instruction"><span class="prompt-instruction-command">↑↓</span><span>to navigate</span></div><div class="prompt-instruction"><span class="prompt-instruction-command">↵</span><span>to open</span></div><div class="prompt-instruction"><span class="prompt-instruction-command">ctrl ↵</span><span>to open in new tab</span></div><div class="prompt-instruction"><span class="prompt-instruction-command">ctrl alt ↵</span><span>to open to the right</span></div><div class="prompt-instruction"><span class="prompt-instruction-command">shift ↵</span><span>to create</span></div><div class="prompt-instruction"><span class="prompt-instruction-command">esc</span><span>to dismiss</span></div>`;
+      // Create navigation instructions using DOM API
+      const instructions = [
+        { command: '↑↓', action: 'to navigate' },
+        { command: '↵', action: 'to open' },
+        { command: 'ctrl ↵', action: 'to open in new tab' },
+        { command: 'ctrl alt ↵', action: 'to open to the right' },
+        { command: 'shift ↵', action: 'to create' },
+        { command: 'esc', action: 'to dismiss' }
+      ];
+      
+      instructions.forEach(({ command, action }) => {
+        const instruction = footer.createDiv({ cls: 'prompt-instruction' });
+        const commandSpan = instruction.createSpan({ cls: 'prompt-instruction-command', text: command });
+        const actionSpan = instruction.createSpan({ text: action });
+      });
     }
   }
 
@@ -102,7 +116,7 @@ export class QuickSwitchModal extends FuzzySuggestModal<QuickSwitchItem['item']>
       // Convert file paths to TFile objects
       recentFiles = lastOpenFiles
         .map((filePath: string) => this.app.vault.getAbstractFileByPath(filePath))
-        .filter((file: any): file is TFile => file instanceof TFile)
+        .filter((file: unknown): file is TFile => file instanceof TFile)
         .slice(0, 10);
     }
     
@@ -369,13 +383,13 @@ export class QuickSwitchModal extends FuzzySuggestModal<QuickSwitchItem['item']>
         // Determine icon based on priority: title > file name > alias
         if (matchReason.matchedInTitle) {
           // Type icon for title/property matches
-          suggestionFlair.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-type"><polyline points="4 7 4 4 20 4 20 7"></polyline><line x1="9" y1="20" x2="15" y2="20"></line><line x1="12" y1="4" x2="12" y2="20"></line></svg>`;
+          this.createTypeIcon(suggestionFlair);
         } else if (matchReason.matchedInFilename) {
           // File icon for file name matches
-          suggestionFlair.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-file-text"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path><polyline points="14,2 14,8 20,8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10,9 9,9 8,9"></polyline></svg>`;
+          this.createFileIcon(suggestionFlair);
         } else if (matchReason.matchedInAlias) {
           // Arrow icon for alias matches
-          suggestionFlair.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-forward"><polyline points="15 17 20 12 15 7"></polyline><path d="M4 18v-2a4 4 0 0 1 4-4h12"></path></svg>`;
+          this.createForwardIcon(suggestionFlair);
         }
       } else {
         // For recent files, use complex layout with appropriate icons
@@ -406,7 +420,7 @@ export class QuickSwitchModal extends FuzzySuggestModal<QuickSwitchItem['item']>
         const isUsingProperty = item instanceof TFile && this.getDisplayName(item) !== item.basename;
         if (isUsingProperty) {
           // Type icon for property-based titles
-          suggestionFlair.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-type"><polyline points="4 7 4 4 20 4 20 7"></polyline><line x1="9" y1="20" x2="15" y2="20"></line><line x1="12" y1="4" x2="12" y2="20"></line></svg>`;
+          this.createTypeIcon(suggestionFlair);
         }
         // No icon for file name-based display
       }
@@ -422,6 +436,21 @@ export class QuickSwitchModal extends FuzzySuggestModal<QuickSwitchItem['item']>
       return 'Alias Match';
     }
     return 'Match';
+  }
+
+  private createTypeIcon(container: HTMLElement): void {
+    // Use innerHTML for SVG as it's the most reliable way to create complex SVG structures
+    container.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-type"><polyline points="4 7 4 4 20 4 20 7"></polyline><line x1="9" y1="20" x2="15" y2="20"></line><line x1="12" y1="4" x2="12" y2="20"></line></svg>`;
+  }
+
+  private createFileIcon(container: HTMLElement): void {
+    // Use innerHTML for SVG as it's the most reliable way to create complex SVG structures
+    container.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-file-text"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path><polyline points="14,2 14,8 20,8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10,9 9,9 8,9"></polyline></svg>`;
+  }
+
+  private createForwardIcon(container: HTMLElement): void {
+    // Use innerHTML for SVG as it's the most reliable way to create complex SVG structures
+    container.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-forward"><polyline points="15 17 20 12 15 7"></polyline><path d="M4 18v-2a4 4 0 0 1 4-4h12"></path></svg>`;
   }
 
   private isUsingCustomProperty(file: TFile): boolean {

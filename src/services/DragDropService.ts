@@ -1,4 +1,4 @@
-import { TFile, MarkdownView } from "obsidian";
+import { TFile, MarkdownView, Editor } from "obsidian";
 
 export class DragDropService {
   private plugin: any;
@@ -7,7 +7,7 @@ export class DragDropService {
     this.plugin = plugin;
   }
 
-  handleDragDrop(event: DragEvent, editor: any): void {
+  handleDragDrop(event: DragEvent, editor: Editor): void {
     // Check if the drag event contains file data
     if (!event.dataTransfer || !event.dataTransfer.files.length) {
       return;
@@ -100,7 +100,7 @@ export class DragDropService {
     return displayName;
   }
 
-  private replaceLastInsertedLink(file: TFile, displayName: string, editor: any): void {
+  private replaceLastInsertedLink(file: TFile, displayName: string, editor: Editor): void {
     const content = editor.getValue();
     const cursor = editor.getCursor();
     

@@ -1,5 +1,5 @@
 import { Platform, Plugin, TFile } from 'obsidian';
-import { PluginSettings, WorkspaceInternal } from './types';
+import { PluginSettings, WorkspaceInternal, EditorSuggest } from './types';
 import { DEFAULT_SETTINGS } from './settings';
 import { LinkTitleSuggest } from './ui/LinkTitleSuggest';
 import { QuickSwitchModal } from './ui/QuickSwitchModal';
@@ -103,7 +103,7 @@ export default class PropertyOverFileNamePlugin extends Plugin {
     if (!editorSuggest) return;
 
     if (this.suggest) {
-      editorSuggest.suggests = editorSuggest.suggests.filter((s: any) => s !== this.suggest);
+      editorSuggest.suggests = editorSuggest.suggests.filter((s: EditorSuggest) => s !== this.suggest);
       this.suggest = undefined;
     }
 
@@ -111,7 +111,7 @@ export default class PropertyOverFileNamePlugin extends Plugin {
       this.suggest = new LinkTitleSuggest(this);
       this.registerEditorSuggest(this.suggest);
       this.cacheService.setSuggest(this.suggest);
-      editorSuggest.suggests = editorSuggest.suggests.filter((s: any) => !s.constructor.name.includes('LinkSuggest'));
+      editorSuggest.suggests = editorSuggest.suggests.filter((s: EditorSuggest) => !s.constructor.name.includes('LinkSuggest'));
       editorSuggest.suggests.unshift(this.suggest);
     }
   }
@@ -128,7 +128,7 @@ export default class PropertyOverFileNamePlugin extends Plugin {
     // Clean up editor suggester
     const editorSuggest = (this.app.workspace as WorkspaceInternal).editorSuggest;
     if (editorSuggest && this.suggest) {
-      editorSuggest.suggests = editorSuggest.suggests.filter((s: any) => s !== this.suggest);
+      editorSuggest.suggests = editorSuggest.suggests.filter((s: EditorSuggest) => s !== this.suggest);
     }
 
     // Restore the original Quick Switcher command

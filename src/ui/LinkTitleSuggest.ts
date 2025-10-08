@@ -3,7 +3,7 @@ import { SuggestionItem, CachedFileData, EditorSuggestInternal, SearchMatchReaso
 import { fuzzyMatch, getMatchScore, buildFileCache } from '../utils/search';
 
 export class LinkTitleSuggest extends EditorSuggest<SuggestionItem> {
-  private plugin: any; // PropertyOverFileNamePlugin
+  private plugin: any;
   private fileCache: Map<string, CachedFileData> = new Map();
   private searchTimeout: number | null = null;
   private matchReasons: Map<string, SearchMatchReason> = new Map();
@@ -210,13 +210,13 @@ export class LinkTitleSuggest extends EditorSuggest<SuggestionItem> {
         // Determine icon based on priority: title > file name > alias
         if (matchReason.matchedInTitle) {
           // Type icon for title/property matches
-          suggestionFlair.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-type"><polyline points="4 7 4 4 20 4 20 7"></polyline><line x1="9" y1="20" x2="15" y2="20"></line><line x1="12" y1="4" x2="12" y2="20"></line></svg>`;
+          this.createTypeIcon(suggestionFlair);
         } else if (matchReason.matchedInFilename) {
           // File icon for file name matches
-          suggestionFlair.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-file-text"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path><polyline points="14,2 14,8 20,8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10,9 9,9 8,9"></polyline></svg>`;
+          this.createFileIcon(suggestionFlair);
         } else if (matchReason.matchedInAlias) {
           // Arrow icon for alias matches
-          suggestionFlair.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-forward"><polyline points="15 17 20 12 15 7"></polyline><path d="M4 18v-2a4 4 0 0 1 4-4h12"></path></svg>`;
+          this.createForwardIcon(suggestionFlair);
         }
       } else {
         // For normal file name results, show like default Obsidian (no icon)
@@ -236,6 +236,21 @@ export class LinkTitleSuggest extends EditorSuggest<SuggestionItem> {
       return 'Alias Match';
     }
     return 'Match';
+  }
+
+  private createTypeIcon(container: HTMLElement): void {
+    // Use innerHTML for SVG as it's the most reliable way to create complex SVG structures
+    container.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-type"><polyline points="4 7 4 4 20 4 20 7"></polyline><line x1="9" y1="20" x2="15" y2="20"></line><line x1="12" y1="4" x2="12" y2="20"></line></svg>`;
+  }
+
+  private createFileIcon(container: HTMLElement): void {
+    // Use innerHTML for SVG as it's the most reliable way to create complex SVG structures
+    container.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-file-text"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path><polyline points="14,2 14,8 20,8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10,9 9,9 8,9"></polyline></svg>`;
+  }
+
+  private createForwardIcon(container: HTMLElement): void {
+    // Use innerHTML for SVG as it's the most reliable way to create complex SVG structures
+    container.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-forward"><polyline points="15 17 20 12 15 7"></polyline><path d="M4 18v-2a4 4 0 0 1 4-4h12"></path></svg>`;
   }
 
   private isUsingCustomProperty(file: TFile): boolean {
@@ -273,13 +288,14 @@ export class LinkTitleSuggest extends EditorSuggest<SuggestionItem> {
     if (line.slice(end.ch, end.ch + 2) === ']]') {
       endPos = { line: end.line, ch: end.ch + 2 };
     }
-    const useMarkdownLinks = (this.app.vault as any).getConfig('useMarkdownLinks') ?? false;
+    const vault = this.app.vault as any;
+    const useMarkdownLinks = vault.getConfig?.('useMarkdownLinks') ?? false;
     let linkText: string;
 
     if (useMarkdownLinks) {
       linkText = `[${suggestion.display}](${encodeURI(suggestion.file!.path)})`;
     } else {
-      const linkPath = suggestion.file!.basename;
+      const linkPath = suggestion.file!.path.replace('.md', '');
       linkText = `[[${linkPath}|${suggestion.display}]]`;
     }
     editor.replaceRange(linkText, { line: start.line, ch: start.ch }, endPos);

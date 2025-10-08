@@ -1,4 +1,4 @@
-import { TFile } from 'obsidian';
+import { TFile, App } from 'obsidian';
 
 export interface PluginSettings {
   propertyKey: string;
@@ -32,7 +32,7 @@ export interface SuggestionItem {
 
 export interface QuickSwitchItem {
   item: TFile | { isNewNote: boolean; newName: string };
-  match: any; // SearchResult from obsidian
+  match: { score: number; matches: number[][] };
 }
 
 // Internal API interfaces for better type safety
@@ -46,12 +46,26 @@ export interface VaultInternal {
 
 export interface WorkspaceInternal {
   editorSuggest?: {
-    suggests: any[];
+    suggests: EditorSuggest[];
   };
 }
 
 export interface AppInternal {
   commands: {
-    commands: Record<string, { callback: () => void }>;
+    commands: Record<string, {
+      id?: string;
+      name?: string;
+      icon?: string;
+      hotkeys?: Array<{ modifiers: string[]; key: string }>;
+      callback: () => void;
+    }>;
   };
+}
+
+// Forward declarations to avoid circular imports
+export type PropertyOverFileNamePlugin = any; // Will be the actual plugin class
+
+export interface EditorSuggest {
+  updateFileCache(file: TFile): void;
+  buildFileCache(): void;
 }

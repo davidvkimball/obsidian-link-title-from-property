@@ -2,7 +2,13 @@ import { AppInternal } from "../types";
 
 export class QuickSwitcherService {
   private plugin: any;
-  private originalSwitcherCommand?: any;
+  private originalSwitcherCommand?: {
+    id: string;
+    name: string;
+    icon?: string;
+    hotkeys: Array<{ modifiers: string[]; key: string }>;
+    callback: () => void;
+  };
   private isCommandOverridden = false;
 
   constructor(plugin: any) {
@@ -25,10 +31,10 @@ export class QuickSwitcherService {
 
     // Store the original command BEFORE we delete it
     if (commands['switcher:open'] && !this.originalSwitcherCommand) {
-      const originalCmd = commands['switcher:open'] as any;
+      const originalCmd = commands['switcher:open'];
       this.originalSwitcherCommand = {
-        id: originalCmd.id,
-        name: originalCmd.name,
+        id: originalCmd.id || 'switcher:open',
+        name: originalCmd.name || 'Quick Switcher',
         icon: originalCmd.icon,
         hotkeys: originalCmd.hotkeys ? [...originalCmd.hotkeys] : [],
         callback: originalCmd.callback
@@ -49,7 +55,7 @@ export class QuickSwitcherService {
       callback: () => {
         // Prevent any default Quick Switcher from opening
         const workspace = this.plugin.app.workspace as any;
-        if (workspace.switcher) {
+        if (workspace.switcher && typeof workspace.switcher.close === 'function') {
           workspace.switcher.close();
         }
         
@@ -57,8 +63,8 @@ export class QuickSwitcherService {
         // Close any existing modals first
         const existingModals = document.querySelectorAll('.modal');
         existingModals.forEach(modal => {
-          if (modal instanceof HTMLElement && modal.style.display !== 'none') {
-            modal.style.display = 'none';
+          if (modal instanceof HTMLElement && !modal.classList.contains('hidden')) {
+            modal.addClass('hidden');
           }
         });
         
@@ -101,7 +107,7 @@ export class QuickSwitcherService {
     }
 
     // Restore the original command
-    (commands as any)['switcher:open'] = {
+    commands['switcher:open'] = {
       id: this.originalSwitcherCommand.id,
       name: this.originalSwitcherCommand.name,
       icon: this.originalSwitcherCommand.icon,
